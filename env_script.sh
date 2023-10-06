@@ -3,7 +3,7 @@
  # Created Date: Friday October 6th 2023
  # Author: Zihan
  # -----
- # Last Modified: Friday, 6th October 2023 3:48:02 am
+ # Last Modified: Friday, 6th October 2023 4:04:20 am
  # Modified By: the developer formerly known as Zihan at <wzh4464@gmail.com>
  # -----
  # HISTORY:
@@ -91,6 +91,6 @@ export CUDA_VISIBLE_DEVICES=0
 
 # if prompting on vit-b-1k
 # python main_hf.py --base_dir /your/path/to/dataset/ --pretrained_model vit-b-1k --meta_lr 0.5 --update_lr 0.5 --update_step 4 --meta_step_size 0.5 --test_dataset oxford-flowers
-~/miniconda3/envs/dam_vp/bin/python meta-training/main_hf.py --base_dir data/FGVC --pretrained_model vit-b-1k --meta_lr 0.5 --update_lr 0.5 --update_step 4 --meta_step_size 0.5 --test_dataset oxford-flowers
+~/miniconda3/envs/dam_vp/bin/python meta-training/main_hf.py --base_dir /workspace/data --pretrained_model vit-b-22k --meta_lr 1.0 --update_lr 1.0 --update_step 4 --meta_step_size 0.5 --weight_decay 1e-4  --test_dataset oxford-flowers
 # tar uncompress fgvc-aircraft-2013b.tar.gz to FGVC
-tar -zxvf fgvc-aircraft-2013b.tar.gz -C FGVC
+# tar -zxvf fgvc-aircraft-2013b.tar.gz -C FGVC

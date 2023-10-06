@@ -70,7 +70,7 @@ class STL10(VisionDataset):
         )
         self.split = verify_str_arg(split, "split", self.splits)
         self.folds = self._verify_folds(folds)
-
+        download = True
         if download:
             self.download()
         elif not self._check_integrity():
