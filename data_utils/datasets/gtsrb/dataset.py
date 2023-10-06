@@ -108,6 +108,9 @@ class GTSRB(VisionDataset):
             self.download()
 
         if not self._check_exists():
+            self._download()
+            if not self._check_exists():
+                raise RuntimeError("Dataset not found. You can use download=True to download it")
             raise RuntimeError("Dataset not found. You can use download=True to download it")
 
         if self._split in ["train", "val"]:
