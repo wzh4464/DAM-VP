@@ -2,8 +2,7 @@
     // 使用 IntelliSense 了解相关属性。 
     // 悬停以查看现有属性的描述。
     // 欲了解更多信息，请访问: https://go.microsoft.com/fwlink/?linkid=830387
-    // command: ~/miniconda3/envs/dam_vp/bin/python main_hf.py --base_dir data/FGVC --pretrained_model vit-b-1k --meta_lr 0.5 --update_lr 0.5 --update_step 4 --meta_step_size 0.5 --test_dataset oxford-flowers
-    "version": "0.2.0",
+    // command: ~/miniconda3/envs/dam_vp/bin/python meta-training/main_hf.py --base_dir data/FGVC --pretrained_model vit-b-1k --meta_lr 0.5 --update_lr 0.5 --update_step 4 --meta_step_size 0.5 --test_dataset oxford-flowers
     "configurations": [
         {
             "name": "Python: main_hf.py",

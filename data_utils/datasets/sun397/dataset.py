@@ -56,7 +56,9 @@ class SUN397(VisionDataset):
             self._download()
 
         if not self._check_exists():
-            raise RuntimeError("Dataset not found. You can use download=True to download it")
+            self._download()
+            if not self._check_exists():
+                raise RuntimeError("Dataset not found. You can use download=True to download it")
 
         with open(self._data_dir / "ClassName.txt") as f:
             self.classes = [c[3:].strip() for c in f]
