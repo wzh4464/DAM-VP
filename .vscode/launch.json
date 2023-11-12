@@ -13,7 +13,7 @@
             "justMyCode": true,
             "args": [
                 "--base_dir",
-                "data/FGVC",
+                "data",
                 "--pretrained_model",
                 "vit-b-1k",
                 "--meta_lr",
@@ -29,8 +29,70 @@
             ],
             "env": {
                 "PYTHONPATH": "~/miniconda3/envs/dam_vp/bin/python",
-                "CUDA_VISIBLE_DEVICES": "0"
+                "CUDA_VISIBLE_DEVICES": "1"
             }
-        }
+        },
+        {
+            // python task_adapting/main.py --base_dir data/VTAB/caltech101 --pretrained_model vit-b-1k --adapt_method prompt_wo_head --test_dataset data/VTAB/oxford-flowers --epochs 50 --lr 0.5 --weight_decay 1e-4 --checkpoint_dir checkpoints/vit-b-1k-wo-head.pth
+            "name": "Python: main.py",
+            "type": "python",
+            "request": "launch",
+            "program": "${workspaceFolder}/task_adapting/main.py",
+            "console": "integratedTerminal",
+            "justMyCode": true,
+            "args": [
+                "--base_dir",
+                "data/VTAB/caltech101",
+                "--pretrained_model",
+                "vit-b-1k",
+                "--adapt_method",
+                "prompt_wo_head",
+                "--test_dataset",
+                "'oxford-flowers'",
+                "--epochs",
+                "50",
+                "--lr",
+                "0.5",
+                "--weight_decay",
+                "1e-4",
+                "--checkpoint_dir",
+                "checkpoints/vit-b-1k-wo-head.pth"
+            ],
+            "env": {
+                "PYTHONPATH": "~/miniconda3/envs/dam_vp/bin/python",
+                "CUDA_VISIBLE_DEVICES": "1"
+            }
+        },
+        // python task_adapting/main.py --base_dir data/ --pretrained_model vit-b-1k --adapt_method prompt_wo_head --test_dataset vtab-caltech101 --epochs 50 --lr 0.5 --weight_decay 1e-4 --checkpoint_dir checkpoints/vit-b-1k-wo-head.pth
+        {
+            "name": "Python: main (vtab-caltech101)",
+            "type": "python",
+            "request": "launch",
+            "program": "${workspaceFolder}/task_adapting/main.py",
+            "console": "integratedTerminal",
+            "justMyCode": true,
+            "args": [
+                "--base_dir",
+                "data/",
+                "--pretrained_model",
+                "vit-b-1k",
+                "--adapt_method",
+                "prompt_wo_head",
+                "--test_dataset",
+                "vtab-caltech101",
+                "--epochs",
+                "50",
+                "--lr",
+                "0.5",
+                "--weight_decay",
+                "1e-4",
+                "--checkpoint_dir",
+                "checkpoints/vit-b-1k-wo-head.pth"
+            ],
+            "env": {
+                "PYTHONPATH": "~/miniconda3/envs/dam_vp/bin/python",
+                "CUDA_VISIBLE_DEVICES": "1"
+            }
+        },
     ]
 }

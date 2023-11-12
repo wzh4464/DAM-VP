@@ -1,6 +1,9 @@
 {
     "[python]": {
-        "editor.defaultFormatter": "ms-python.black-formatter"
+        "editor.defaultFormatter": "ms-python.autopep8"
     },
-    "git.enableCommitSigning": false
+    "git.enableCommitSigning": false,
+    "autopep8.args": [
+        "--ignore=E402,F403"
+      ],
 }

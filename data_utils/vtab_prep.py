@@ -1,6 +1,6 @@
 import tensorflow_datasets as tfds
 # from tensorflow_datasets.core import download
-data_dir = "/data-x/g12/huangqidong/VTAB/"  # TODO: setup the data_dir to put the the data to, the DATA.DATAPATH value in config
+data_dir = "data-x/VTAB/"  # TODO: setup the data_dir to put the the data to, the DATA.DATAPATH value in config
 
 # download_config = download.DownloadConfig()
 # download_config.download_mode = 'reuse_dataset_if_exists'

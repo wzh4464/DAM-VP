@@ -119,4 +119,6 @@ dependencies:
     - termcolor==1.1.0
     - timm==0.4.9
     - wcwidth==0.2.5
+    - tensorflow
+    - tensorflow-addons
 
