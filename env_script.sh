@@ -3,7 +3,7 @@
  # Created Date: Friday October 6th 2023
  # Author: Zihan
  # -----
- # Last Modified: Sunday, 12th November 2023 10:50:24 pm
+ # Last Modified: Monday, 13th November 2023 9:08:47 am
  # Modified By: the developer formerly known as Zihan at <wzh4464@gmail.com>
  # -----
  # HISTORY:
@@ -99,3 +99,5 @@ export CUDA_VISIBLE_DEVICES=1
 onedrive --synchronize --single-directory pth_prompt
 onedrive --synchronize --single-directory data
 onedrive --synchronize --single-directory backbone_pth
+
+python task_adapting/main.py --base_dir data/ --pretrained_model vit-b-1k --adapt_method prompt_wo_head --test_dataset vtab-caltech101 --epochs 50 --lr 0.5 --weight_decay 1e-4 --checkpoint_dir checkpoints/vit-b-1k-wo-head.pth --dataset vtab-caltech101

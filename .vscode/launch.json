@@ -63,7 +63,7 @@
                 "CUDA_VISIBLE_DEVICES": "1"
             }
         },
-        // python task_adapting/main.py --base_dir data/ --pretrained_model vit-b-1k --adapt_method prompt_wo_head --test_dataset vtab-caltech101 --epochs 50 --lr 0.5 --weight_decay 1e-4 --checkpoint_dir checkpoints/vit-b-1k-wo-head.pth
+        // python task_adapting/main.py --base_dir data/ --pretrained_model vit-b-1k --adapt_method prompt_wo_head --test_dataset vtab-caltech101 --epochs 50 --lr 0.5 --weight_decay 1e-4 --checkpoint_dir checkpoints/vit-b-1k-wo-head.pth --dataset vtab-caltech101
         {
             "name": "Python: main (vtab-caltech101)",
             "type": "python",
@@ -87,7 +87,9 @@
                 "--weight_decay",
                 "1e-4",
                 "--checkpoint_dir",
-                "checkpoints/vit-b-1k-wo-head.pth"
+                "checkpoints/vit-b-1k-wo-head.pth",
+                "--dataset",
+                "vtab-caltech101"
             ],
             "env": {
                 "PYTHONPATH": "~/miniconda3/envs/dam_vp/bin/python",

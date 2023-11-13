@@ -92,9 +92,8 @@ class TFDataset(torch.utils.data.Dataset):
         self._class_ids = sorted(list(set(self._targets)))
 
         logger.info("Nums of images: {}".format(len(self._image_tensor_list)))
-        logger.info("Nums of classes: {} / {}".format(
-            len(self._class_ids), self.get_class_num()))
-
+        logger.info("Nums of classes: {}".format(
+            len(self._class_ids)))
         del data_list
         del tf_data
 
@@ -103,6 +102,7 @@ class TFDataset(torch.utils.data.Dataset):
         return num_imgs, self.get_class_num()
 
     def get_class_num(self):
+        self.args.num_classes = len(self._class_ids)
         return self.args.num_classes
 
     def get_class_weights(self, weight_type):

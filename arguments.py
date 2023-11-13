@@ -121,6 +121,7 @@ class Arguments:
         ### data related
         self._parser.add_argument('--batch_size', type=int, default=128, help='Batch size in training')
         self._parser.add_argument('--base_dir', type=str, default='/data-x/g12/huangqidong/')
+        self._parser.add_argument('--dataset', type=str, default='fru92', choices=TASK_ADAPT_DATASETS, help='Dataset for usage [default: fru92].')
         self._parser.add_argument('--dataset_perc', default=1.0, type=float, help='Dataset percentage for usage [default: 1.0].')
         self._parser.add_argument('--crop_size', default=224, type=int, help='Input size of images [default: 224].')
         self._parser.add_argument('--diversities', type=dict, default=DATASET_DIVERSITIES, help='Diversity values of datasets.')
@@ -139,7 +140,7 @@ class Arguments:
         ### others
         self._parser.add_argument('--seed', type=int, default=2023, metavar='S', help='Random seed (default: 2023)')
         self._parser.add_argument('--gpu_ids', type=int, default=0, help='Ids of GPUs to use.')
-        self._parser.add_argument('--num_gpus', type=int, default=1, help='Num of GPUs to use.')
+        self._parser.add_argument('--num_gpus', type=int, default=0, help='Num of GPUs to use.')
         self._parser.add_argument('--num_workers', type=int, default=4, help='Worker nums of data loading.')
         self._parser.add_argument('--pin_memory', action='store_true', help='Pin CPU memory in DataLoader for more efficient (sometimes) transfer to GPU.')
         self._parser.set_defaults(pin_memory=True)
