@@ -142,8 +142,8 @@ def construct_train_loader(args, dataset=None):
     return _construct_loader(
         args=args,
         split="train",
-        # batch_size=int(args.batch_size / args.num_gpus),
-        batch_size=args.batch_size,
+        batch_size=int(args.batch_size / args.num_gpus),
+        # batch_size=args.batch_size,
         shuffle=True,
         drop_last=drop_last,
         dataset=dataset if dataset else args.dataset
@@ -153,8 +153,8 @@ def construct_train_loader(args, dataset=None):
 def construct_val_loader(args, dataset=None, batch_size=None):
     """Validation loader wrapper."""
     if batch_size is None:
-        # bs = int(args.batch_size / args.num_gpus)
-        bs = args.batch_size
+        bs = int(args.batch_size / args.num_gpus)
+        # bs = args.batch_size
     else:
         bs = batch_size
     return _construct_loader(

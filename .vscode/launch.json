@@ -73,7 +73,7 @@
             "justMyCode": true,
             "args": [
                 "--base_dir",
-                "data/",
+                "../dataset/data/",
                 "--pretrained_model",
                 "vit-b-1k",
                 "--adapt_method",
@@ -89,7 +89,9 @@
                 "--checkpoint_dir",
                 "checkpoints/vit-b-1k-wo-head.pth",
                 "--dataset",
-                "vtab-caltech101"
+                "vtab-caltech101",
+                "--num_gpus",
+                "1"
             ],
             "env": {
                 "PYTHONPATH": "~/miniconda3/envs/dam_vp/bin/python",
