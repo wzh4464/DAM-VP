@@ -1,0 +1,84 @@
+{
+    "version": "2.0.0",
+    "tasks": [
+        {
+            "label": "Run Python Task in Conda Env",
+            "type": "shell",
+            "command": "conda",
+            "args": [
+                "run",
+                "-n", "dam_vp",
+                "python", "task_adapting/main.py",
+                "--base_dir", "~/dataset",
+                "--pretrained_model", "vit-b-1k",
+                "--adapt_method", "prompt_wo_head",
+                "--test_dataset", "'oxford-flowers'",
+                "--epochs", "50",
+                "--lr", "0.5",
+                "--weight_decay", "1e-4",
+                "--checkpoint_dir", "checkpoints/vit-b-1k-wo-head.pth",
+                "--num_gpus", "2"
+            ],
+            "options": {
+                "env": {
+                    "CUDA_VISIBLE_DEVICES": "0,1"
+                }
+            },
+            "group": {
+                "kind": "build",
+                "isDefault": true
+            },
+            "presentation": {
+                "reveal": "always",
+                "panel": "shared",
+                "showReuseMessage": true,
+                "clear": false
+            }
+        },
+        {
+            "label": "Python One GPU",
+            "type": "shell",
+            "command": "conda",
+            "args": [
+                "run",
+                "-n", "dam_vp",
+                "python", "task_adapting/main.py",
+                "--base_dir",
+                "../dataset",
+                "--pretrained_model",
+                "vit-b-1k",
+                "--adapt_method",
+                "prompt_wo_head",
+                "--test_dataset",
+                "oxford-flowers",
+                "--epochs",
+                "50",
+                "--lr",
+                "0.5",
+                "--weight_decay",
+                "1e-4",
+                "--checkpoint_dir",
+                "checkpoints/vit-b-1k-wo-head.pth",
+                "--dataset",
+                "vtab-caltech101",
+                "--num_gpus",
+                "1"
+            ],
+            "options": {
+                "env": {
+                    "CUDA_VISIBLE_DEVICES": "0"
+                }
+            },
+            "group": {
+                "kind": "build",
+                "isDefault": true
+            },
+            "presentation": {
+                "reveal": "always",
+                "panel": "shared",
+                "showReuseMessage": true,
+                "clear": false
+            }
+        }
+    ]
+}

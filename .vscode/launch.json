@@ -5,36 +5,7 @@
     // command: ~/miniconda3/envs/dam_vp/bin/python meta-training/main_hf.py --base_dir data/FGVC --pretrained_model vit-b-1k --meta_lr 0.5 --update_lr 0.5 --update_step 4 --meta_step_size 0.5 --test_dataset oxford-flowers
     "configurations": [
         {
-            "name": "Python: main_hf.py",
-            "type": "python",
-            "request": "launch",
-            "program": "${workspaceFolder}/meta-training/main_hf.py",
-            "console": "integratedTerminal",
-            "justMyCode": true,
-            "args": [
-                "--base_dir",
-                "data",
-                "--pretrained_model",
-                "vit-b-1k",
-                "--meta_lr",
-                "0.5",
-                "--update_lr",
-                "0.5",
-                "--update_step",
-                "4",
-                "--meta_step_size",
-                "0.5",
-                "--test_dataset",
-                "oxford-flowers"
-            ],
-            "env": {
-                "PYTHONPATH": "~/miniconda3/envs/dam_vp/bin/python",
-                "CUDA_VISIBLE_DEVICES": "1"
-            }
-        },
-        {
-            // python task_adapting/main.py --base_dir data/VTAB/caltech101 --pretrained_model vit-b-1k --adapt_method prompt_wo_head --test_dataset data/VTAB/oxford-flowers --epochs 50 --lr 0.5 --weight_decay 1e-4 --checkpoint_dir checkpoints/vit-b-1k-wo-head.pth
-            "name": "Python: main.py",
+            "name": "Python: main",
             "type": "python",
             "request": "launch",
             "program": "${workspaceFolder}/task_adapting/main.py",
@@ -42,44 +13,13 @@
             "justMyCode": true,
             "args": [
                 "--base_dir",
-                "data/VTAB/caltech101",
+                "../dataset",
                 "--pretrained_model",
                 "vit-b-1k",
                 "--adapt_method",
                 "prompt_wo_head",
                 "--test_dataset",
-                "'oxford-flowers'",
-                "--epochs",
-                "50",
-                "--lr",
-                "0.5",
-                "--weight_decay",
-                "1e-4",
-                "--checkpoint_dir",
-                "checkpoints/vit-b-1k-wo-head.pth"
-            ],
-            "env": {
-                "PYTHONPATH": "~/miniconda3/envs/dam_vp/bin/python",
-                "CUDA_VISIBLE_DEVICES": "1"
-            }
-        },
-        // python task_adapting/main.py --base_dir data/ --pretrained_model vit-b-1k --adapt_method prompt_wo_head --test_dataset vtab-caltech101 --epochs 50 --lr 0.5 --weight_decay 1e-4 --checkpoint_dir checkpoints/vit-b-1k-wo-head.pth --dataset vtab-caltech101
-        {
-            "name": "Python: main (vtab-caltech101)",
-            "type": "python",
-            "request": "launch",
-            "program": "${workspaceFolder}/task_adapting/main.py",
-            "console": "integratedTerminal",
-            "justMyCode": true,
-            "args": [
-                "--base_dir",
-                "../dataset/data/",
-                "--pretrained_model",
-                "vit-b-1k",
-                "--adapt_method",
-                "prompt_wo_head",
-                "--test_dataset",
-                "vtab-caltech101",
+                "oxford-flowers",
                 "--epochs",
                 "50",
                 "--lr",
@@ -95,7 +35,24 @@
             ],
             "env": {
                 "PYTHONPATH": "~/miniconda3/envs/dam_vp/bin/python",
-                "CUDA_VISIBLE_DEVICES": "1"
+                "CUDA_VISIBLE_DEVICES": "0"
+            }
+        },
+        // python data_utils/datasets/oxfordpet/dataset.py --data_dir ~/dataset
+        {
+            "name": "Python: oxfordpet/dataset.py",
+            "type": "python",
+            "request": "launch",
+            "program": "${workspaceFolder}/data_utils/datasets/oxfordpet/dataset.py",
+            "console": "integratedTerminal",
+            "justMyCode": true,
+            "args": [
+                "--data_dir",
+                "~/dataset"
+            ],
+            "env": {
+                "PYTHONPATH": "~/miniconda3/envs/dam_vp/bin/python",
+                "CUDA_VISIBLE_DEVICES": "0,1"
             }
         },
     ]

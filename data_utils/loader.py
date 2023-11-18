@@ -192,4 +192,11 @@ def shuffle(loader, cur_epoch):
 
 def _dataset_class_num(dataset_name):
     """Query to obtain class nums of datasets."""
+    print("dataset_name: ", dataset_name)
+    if dataset_name.startswith("vtab-"):
+        dataset_name = dataset_name.split("-")[1]
+    # subsitute "_" with "-"
+    dataset_name = dataset_name.replace("_", "-")
+    # surround with "'"
+    # dataset_name = f"'{dataset_name}'"
     return _NUM_CLASSES_CATALOG[dataset_name]

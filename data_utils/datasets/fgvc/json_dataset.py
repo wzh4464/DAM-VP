@@ -276,8 +276,7 @@ class JSONDataset(torch.utils.data.Dataset):
             "train",
             "val",
             "test",
-        }, "Split '{}' not supported for {} dataset".format(
-            split, args.dataset)
+        }, f"Split '{split}' not supported for {args.dataset} dataset"
         # logger.info("Constructing {} dataset {}...".format(
         #     args.dataset, split))
 
@@ -289,14 +288,12 @@ class JSONDataset(torch.utils.data.Dataset):
         self.transform = get_transforms(split, args.crop_size, args.pretrained_model)
 
     def get_anno(self):
-        anno_path = os.path.join(self.data_dir, "{}.json".format(self._split))
-        if "train" in self._split:
-            if self.data_percentage < 1.0:
-                anno_path = os.path.join(
-                    self.data_dir,
-                    "{}_{}.json".format(self._split, self.data_percentage)
-                )
-        assert os.path.exists(anno_path), "{} dir not found".format(anno_path)
+        anno_path = os.path.join(self.data_dir, f"{self._split}.json")
+        if "train" in self._split and self.data_percentage < 1.0:
+            anno_path = os.path.join(
+                self.data_dir, f"{self._split}_{self.data_percentage}.json"
+            )
+        assert os.path.exists(anno_path), f"{anno_path} dir not found"
 
         return read_json(anno_path)
 
@@ -307,7 +304,7 @@ class JSONDataset(torch.utils.data.Dataset):
         """Constructs the imdb."""
 
         img_dir = self.get_imagedir()
-        assert os.path.exists(img_dir), "{} dir not found".format(img_dir)
+        assert os.path.exists(img_dir), f"{img_dir} dir not found"
 
         anno = self.get_anno()
         # Map class ids to contiguous ids
@@ -321,8 +318,8 @@ class JSONDataset(torch.utils.data.Dataset):
             im_path = os.path.join(img_dir, img_name)
             self._imdb.append({"im_path": im_path, "class": cont_id})
 
-        logger.info("Nums of images: {}".format(len(self._imdb)))
-        logger.info("Nums of classes: {}".format(len(self._class_ids)))
+        logger.info(f"Nums of images: {len(self._imdb)}")
+        logger.info(f"Nums of classes: {len(self._class_ids)}")
 
     def get_info(self):
         num_imgs = len(self._imdb)
@@ -337,8 +334,7 @@ class JSONDataset(torch.utils.data.Dataset):
 
         if "train" not in self._split:
             raise ValueError(
-                "only getting training class distribution, " + \
-                "got split {} instead".format(self._split)
+                f"only getting training class distribution, got split {self._split} instead"
             )
 
         cls_num = self.get_class_num()
@@ -363,16 +359,11 @@ class JSONDataset(torch.utils.data.Dataset):
         im = tv.datasets.folder.default_loader(self._imdb[index]["im_path"])
         label = self._imdb[index]["class"]
         im = self.transform(im)
-        # if self._split == "train":
-        #     index = index
-        # else:
-        #     index = f"{self._split}{index}"
-        sample = {
+        return {
             "image": im,
             "label": label,
             # "id": index
         }
-        return sample
 
     def __len__(self):
         return len(self._imdb)
@@ -441,7 +432,7 @@ if __name__ == '__main__':
     import argparse
     from torch.utils.data import DataLoader
 
-    ### CUB-200
+    # ### CUB-200
     parser = argparse.ArgumentParser(description='Meta Training for Visual Prompts')
     parser.add_argument('--dataset', type=str, default="cub-200")
     parser.add_argument('--data_dir', type=str, default="/data-x/g12/huangqidong/FGVC/CUB_200_2011/")
@@ -451,63 +442,65 @@ if __name__ == '__main__':
     parser.add_argument('--dataset_perc', type=float, default=1.0)
     args = parser.parse_args()
 
-    dataset_train = CUB200Dataset(args, "train")
-    dataset_val = CUB200Dataset(args, "val")
-    dataset_test = CUB200Dataset(args, "test")
-    logger.info(dataset_train.classes[0])
-    logger.info("Nums of classes: {}".format(len(dataset_train._class_ids)))
-    logger.info("Sample nums: [train]-{}, [val]-{}, [test]-{}".format(len(dataset_train), len(dataset_val), len(dataset_test)))
+    # dataset_train = CUB200Dataset(args, "train")
+    # dataset_val = CUB200Dataset(args, "val")
+    # dataset_test = CUB200Dataset(args, "test")
+    # logger.info(dataset_train.classes[0])
+    # logger.info("Nums of classes: {}".format(len(dataset_train._class_ids)))
+    # logger.info("Sample nums: [train]-{}, [val]-{}, [test]-{}".format(len(dataset_train), len(dataset_val), len(dataset_test)))
 
-    for sample in DataLoader(dataset_train, batch_size=256):
-        logger.info(sample["image"].shape)
-        logger.info(sample["label"])
-        logger.info(sample["label"].shape)
-        break
+    # for sample in DataLoader(dataset_train, batch_size=256):
+    #     logger.info(sample["image"].shape)
+    #     logger.info(sample["label"])
+    #     logger.info(sample["label"].shape)
+    #     break
 
-    ### Standord Cars
-    args.dataset = "Standord Cars"
-    args.data_dir = "/data-x/g12/huangqidong/FGVC/Stanford-cars/"
+    # ### Standord Cars
+    # args.dataset = "Standord Cars"
+    # args.data_dir = "/data-x/g12/huangqidong/FGVC/Stanford-cars/"
 
-    dataset_train = CarsDataset(args, "train")
-    dataset_val = CarsDataset(args, "val")
-    dataset_test = CarsDataset(args, "test")
-    logger.info(dataset_train.classes[0])
-    logger.info("Nums of classes: {}".format(len(dataset_train._class_ids)))
-    logger.info("Sample nums: [train]-{}, [val]-{}, [test]-{}".format(len(dataset_train), len(dataset_val), len(dataset_test)))
+    # dataset_train = CarsDataset(args, "train")
+    # dataset_val = CarsDataset(args, "val")
+    # dataset_test = CarsDataset(args, "test")
+    # logger.info(dataset_train.classes[0])
+    # logger.info("Nums of classes: {}".format(len(dataset_train._class_ids)))
+    # logger.info("Sample nums: [train]-{}, [val]-{}, [test]-{}".format(len(dataset_train), len(dataset_val), len(dataset_test)))
 
-    for sample in DataLoader(dataset_train, batch_size=256):
-        logger.info(sample["image"].shape)
-        logger.info(sample["label"])
-        logger.info(sample["label"].shape)
-        break
+    # for sample in DataLoader(dataset_train, batch_size=256):
+    #     logger.info(sample["image"].shape)
+    #     logger.info(sample["label"])
+    #     logger.info(sample["label"].shape)
+    #     break
 
-    ### Standord Dogs
-    args.dataset = "Standord Dogs"
-    args.data_dir = "/data-x/g12/huangqidong/FGVC/Stanford-dogs/"
+    # ### Standord Dogs
+    # args.dataset = "Standord Dogs"
+    # args.data_dir = "/data-x/g12/huangqidong/FGVC/Stanford-dogs/"
 
-    dataset_train = DogsDataset(args, "train")
-    dataset_val = DogsDataset(args, "val")
-    dataset_test = DogsDataset(args, "test")
-    logger.info(dataset_train.classes[0])
-    logger.info("Nums of classes: {}".format(len(dataset_train._class_ids)))
-    logger.info("Sample nums: [train]-{}, [val]-{}, [test]-{}".format(len(dataset_train), len(dataset_val), len(dataset_test)))
+    # dataset_train = DogsDataset(args, "train")
+    # dataset_val = DogsDataset(args, "val")
+    # dataset_test = DogsDataset(args, "test")
+    # logger.info(dataset_train.classes[0])
+    # logger.info("Nums of classes: {}".format(len(dataset_train._class_ids)))
+    # logger.info("Sample nums: [train]-{}, [val]-{}, [test]-{}".format(len(dataset_train), len(dataset_val), len(dataset_test)))
 
-    for sample in DataLoader(dataset_train, batch_size=256):
-        logger.info(sample["image"].shape)
-        logger.info(sample["label"])
-        logger.info(sample["label"].shape)
-        break
+    # for sample in DataLoader(dataset_train, batch_size=256):
+    #     logger.info(sample["image"].shape)
+    #     logger.info(sample["label"])
+    #     logger.info(sample["label"].shape)
+    #     break
 
     ### Oxford Flowers
     args.dataset = "Oxford Flowers"
-    args.data_dir = "/data-x/g12/huangqidong/FGVC/OxfordFlower/"
+    args.data_dir = "/home/zihan/dataset/FGVC/OxfordFlower/"
 
     dataset_train = FlowersDataset(args, "train")
     dataset_val = FlowersDataset(args, "val")
     dataset_test = FlowersDataset(args, "test")
     logger.info(dataset_train.classes[0])
-    logger.info("Nums of classes: {}".format(len(dataset_train.classes)))
-    logger.info("Sample nums: [train]-{}, [val]-{}, [test]-{}".format(len(dataset_train), len(dataset_val), len(dataset_test)))
+    logger.info(f"Nums of classes: {len(dataset_train.classes)}")
+    logger.info(
+        f"Sample nums: [train]-{len(dataset_train)}, [val]-{len(dataset_val)}, [test]-{len(dataset_test)}"
+    )
 
     for sample in DataLoader(dataset_train, batch_size=256):
         logger.info(sample["image"].shape)
@@ -515,19 +508,19 @@ if __name__ == '__main__':
         logger.info(sample["label"].shape)
         break
 
-    ### NABirds
-    args.dataset = "NABirds"
-    args.data_dir = "/data-x/g12/huangqidong/FGVC/nabirds/"
+    # ### NABirds
+    # args.dataset = "NABirds"
+    # args.data_dir = "/data-x/g12/huangqidong/FGVC/nabirds/"
 
-    dataset_train = NabirdsDataset(args, "train")
-    dataset_val = NabirdsDataset(args, "val")
-    dataset_test = NabirdsDataset(args, "test")
-    logger.info(dataset_train.classes[0])
-    logger.info("Nums of classes: {}".format(len(dataset_train._class_ids)))
-    logger.info("Sample nums: [train]-{}, [val]-{}, [test]-{}".format(len(dataset_train), len(dataset_val), len(dataset_test)))
+    # dataset_train = NabirdsDataset(args, "train")
+    # dataset_val = NabirdsDataset(args, "val")
+    # dataset_test = NabirdsDataset(args, "test")
+    # logger.info(dataset_train.classes[0])
+    # logger.info("Nums of classes: {}".format(len(dataset_train._class_ids)))
+    # logger.info("Sample nums: [train]-{}, [val]-{}, [test]-{}".format(len(dataset_train), len(dataset_val), len(dataset_test)))
 
-    for sample in DataLoader(dataset_train, batch_size=256):
-        logger.info(sample["image"].shape)
-        logger.info(sample["label"])
-        logger.info(sample["label"].shape)
-        break
+    # for sample in DataLoader(dataset_train, batch_size=256):
+    #     logger.info(sample["image"].shape)
+    #     logger.info(sample["label"])
+    #     logger.info(sample["label"].shape)
+    #     break
