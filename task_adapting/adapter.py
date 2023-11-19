@@ -47,8 +47,7 @@ class Adapter(object):
     def loss_function(self, logits, target):
         """Loss function to predict GT target.
         """
-        loss = self.criterion(logits, target)
-        return loss
+        return self.criterion(logits, target)
 
 
     def load_prompter(self, prompter_path=None):
@@ -58,7 +57,7 @@ class Adapter(object):
         if prompter_path is not None:
             checkpoint = torch.load(prompter_path)
             prompter.load_state_dict(checkpoint['state_dict'])
-            logger.info("Loading meta-trained visual prompts from {}".format(prompter_path))
+            logger.info(f"Loading meta-trained visual prompts from {prompter_path}")
         return prompter
 
 
@@ -67,10 +66,10 @@ class Adapter(object):
         """
         set_seed(self.args.seed)
         with torch.no_grad():
-            input = torch.randn(512, 3, self.args.crop_size, self.args.crop_size).to(self.args.device)
-            output = self.model.forward_features(input) # [512, emd_dim]
-            output = output.std(0, unbiased=False) # [emd_dim]
-            indices = output.sort(0, descending=True)[1]
+            inPut = torch.randn(512, 3, self.args.crop_size, self.args.crop_size).to(self.args.device)
+            outPut = self.model.forward_features(inPut) # [512, emd_dim]
+            outPut = outPut.std(0, unbiased=False) # [emd_dim]
+            indices = outPut.sort(0, descending=True)[1]
             # indices = indices[:100]
             # indices = torch.unique(indices)
         return indices
@@ -79,17 +78,12 @@ class Adapter(object):
     def rep2logit(self, output, num_classes):
         """Convert the output representations to logits.
         """
-        if self.args.adapt_method == "prompt_wo_head":
-            # activity aware
-            indices = self.indices[:num_classes]
-            indices = torch.unique(indices)
-            logits = output[:, indices]
-            # # scaled average voting
-            # logits = F.avg_pool1d(output.unsqueeze(1), kernel_size=output.size(-1)//num_classes).squeeze(1)
-            # logits = logits[:, :num_classes] if logits.size(-1) > num_classes else logits
-        else:
+        if self.args.adapt_method != "prompt_wo_head":
             raise NotImplementedError
-        return logits
+        # activity aware
+        indices = self.indices[:num_classes]
+        indices = torch.unique(indices)
+        return output[:, indices]
 
 
     def get_prompted_image(self, image, prototype_gather=None, prompter=None, prompter_gather=None):
@@ -97,11 +91,10 @@ class Adapter(object):
         """
         if self.args.wo_da:
             assert prompter is not None
-            prompted_image = prompter(image)
+            return prompter(image)
         else:
             assert prototype_gather is not None
             assert prompter_gather is not None
-            prompted_image = []
             with torch.no_grad():
                 rep_batch = self.model.forward_features(image) # [N, emd_dim]
                 rep_batch_sum = (rep_batch**2).sum(dim=-1, keepdims=True) # [N, 1]
@@ -109,12 +102,11 @@ class Adapter(object):
                 distance_matrix = torch.sqrt(rep_batch_sum + prototype_gather_sum - 2 * torch.mm(rep_batch, prototype_gather.T)) # [N, M]
                 indices = torch.argmin(distance_matrix, dim=-1) # [B]
 
-            for idx in range(rep_batch.size(0)):
-                prompted_image.append(
-                    prompter_gather[indices[idx]](image[idx].unsqueeze(0))
-                )
-            prompted_image = torch.cat(prompted_image, dim=0)
-        return prompted_image
+            prompted_image = [
+                prompter_gather[indices[idx]](image[idx].unsqueeze(0))
+                for idx in range(rep_batch.size(0))
+            ]
+            return torch.cat(prompted_image, dim=0)
 
 
     def coarse_clustering(self, data_loader):
@@ -150,8 +142,9 @@ class Adapter(object):
         y_pred = torch.from_numpy(y_pred).to(self.args.device)
         coarse_class_idx = torch.unique(y_pred)
         self.num_coarse_classes = len(coarse_class_idx)
-        logger.info("Nums of coarsely divided categories for test dataset {}: {}".format(
-            self.args.test_dataset, len(coarse_class_idx)))
+        logger.info(
+            f"Nums of coarsely divided categories for test dataset {self.args.test_dataset}: {len(coarse_class_idx)}"
+        )
 
         prototype_gather = []
         for i in range(len(coarse_class_idx)):
@@ -159,8 +152,9 @@ class Adapter(object):
             prototype = rep_gather[pos].mean(0).unsqueeze(0)
             prototype_gather.append(prototype)
         self.prototype_gather = torch.cat(prototype_gather)
-        logger.info("Nums of prototypes of coarse clusters for test dataset {}: {}".format(
-            self.args.test_dataset, self.prototype_gather.size(0)))
+        logger.info(
+            f"Nums of prototypes of coarse clusters for test dataset {self.args.test_dataset}: {self.prototype_gather.size(0)}"
+        )
 
 
     def our_method(self, test_data, prompter_path):
@@ -168,8 +162,12 @@ class Adapter(object):
         """
         train_loader, val_loader, test_loader = test_data
         prompter = self.load_prompter(prompter_path)
-        self.model.discard_classifier()
-        self.indices = self.get_active_neuron_index()
+
+        # print the basic information of the model
+        print(self.model)
+        
+        self.model.discard_classifier() # freeze the head
+        self.indices = self.get_active_neuron_index() # get the active neurons
         if not self.args.wo_da:
             self.coarse_clustering(test_data)
 
@@ -228,12 +226,13 @@ class Adapter(object):
                 # logger.info(prompter.pad_up.grad)
                 optimizer.step()
                 if (i + 1) % 1 == 0:
-                    logger.info("[Prompt Finetuning] Epoch: [{}/{}], Step: [{}/{}], Training loss: {}".format(
-                        epoch, self.args.epochs, i, len(train_loader), loss.item()))
+                    logger.info(
+                        f"[Prompt Finetuning] Epoch: [{epoch}/{self.args.epochs}], Step: [{i}/{len(train_loader)}], Training loss: {loss.item()}"
+                    )
             # validate
             with torch.no_grad():
                 num_total, correct = 0, 0
-                for i, sample in enumerate(val_loader):
+                for sample in val_loader:
                     image = sample["image"].to(self.args.device)
                     label = sample["label"].to(self.args.device)
                     prompted_image = self.get_prompted_image(image, prompter=prompter) \
@@ -244,7 +243,7 @@ class Adapter(object):
                     correct += (pred == label).sum().item()
                     num_total += image.size(0)
                 acc_val = float(correct / num_total)
-                logger.info("[Prompt Validating] Epoch: {}, Val acc: {}".format(epoch, acc_val))
+                logger.info(f"[Prompt Validating] Epoch: {epoch}, Val acc: {acc_val}")
                 if acc_val > BEST_ACC_VAL:
                     BEST_ACC_VAL = acc_val
                     if self.args.wo_da:
@@ -255,7 +254,7 @@ class Adapter(object):
             if epoch > 0 and (epoch + 1) % 5 == 0:
                 with torch.no_grad():
                     num_total, correct = 0, 0
-                    for i, sample in enumerate(test_loader):
+                    for sample in test_loader:
                         image = sample["image"].to(self.args.device)
                         label = sample["label"].to(self.args.device)
                         prompted_image = self.get_prompted_image(image, prompter=best_prompter) \
@@ -266,7 +265,7 @@ class Adapter(object):
                         correct += (pred == label).sum().item()
                         num_total += image.size(0)
                     acc_test = float(correct / num_total)
-                    logger.info("[Prompt Testing] Epoch: {}, Test acc: {}".format(epoch, acc_test))
+                    logger.info(f"[Prompt Testing] Epoch: {epoch}, Test acc: {acc_test}")
         return acc_test
 
 
@@ -332,12 +331,13 @@ class Adapter(object):
                 # logger.info(prompter.pad_up.grad)
                 optimizer.step()
                 if (i + 1) % 1 == 0:
-                    logger.info("[Prompt Finetuning] Epoch: [{}/{}], Step: [{}/{}], Training loss: {}".format(
-                        epoch, self.args.epochs, i, len(train_loader), loss.item()))
+                    logger.info(
+                        f"[Prompt Finetuning] Epoch: [{epoch}/{self.args.epochs}], Step: [{i}/{len(train_loader)}], Training loss: {loss.item()}"
+                    )
             # validate
             with torch.no_grad():
                 num_total, correct = 0, 0
-                for i, sample in enumerate(val_loader):
+                for sample in val_loader:
                     image = sample["image"].to(self.args.device)
                     label = sample["label"].to(self.args.device)
                     prompted_image = self.get_prompted_image(image, prompter=prompter) \
@@ -347,7 +347,7 @@ class Adapter(object):
                     correct += (pred == label).sum().item()
                     num_total += image.size(0)
                 acc_val = float(correct / num_total)
-                logger.info("[Prompt Validating] Epoch: {}, Val acc: {}".format(epoch, acc_val))
+                logger.info(f"[Prompt Validating] Epoch: {epoch}, Val acc: {acc_val}")
                 if acc_val > BEST_ACC_VAL:
                     BEST_ACC_VAL = acc_val
                     if self.args.wo_da:
@@ -359,7 +359,7 @@ class Adapter(object):
             if epoch > 0 and (epoch + 1) % 5 == 0:
                 with torch.no_grad():
                     num_total, correct = 0, 0
-                    for i, sample in enumerate(test_loader):
+                    for sample in test_loader:
                         image = sample["image"].to(self.args.device)
                         label = sample["label"].to(self.args.device)
                         prompted_image = self.get_prompted_image(image, prompter=best_prompter) \
@@ -369,5 +369,5 @@ class Adapter(object):
                         correct += (pred == label).sum().item()
                         num_total += image.size(0)
                     acc_test = float(correct / num_total)
-                    logger.info("[Prompt Testing] Epoch: {}, Test acc: {}".format(epoch, acc_test))
+                    logger.info(f"[Prompt Testing] Epoch: {epoch}, Test acc: {acc_test}")
         return acc_test
