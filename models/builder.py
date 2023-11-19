@@ -52,17 +52,27 @@ def get_current_device():
 
 
 def load_model_to_device(model, args):
-    cur_device = get_current_device()
+    cur_device = args.local_rank
     if torch.cuda.is_available():
         # Transfer the model to the current GPU device
         model = model.cuda(device=cur_device)
         # Use multi-process data parallel model in the multi-gpu setting
         if args.num_gpus > 1:
             # Make model replica operate on the current device
-            model = torch.nn.parallel.DistributedDataParallel(
+            model = DistributedDataParallel(
                 module=model, device_ids=[cur_device], output_device=cur_device,
                 find_unused_parameters=True,
             )
     else:
         model = model.to(cur_device)
     return model, cur_device
+
+class DistributedDataParallel(torch.nn.parallel.DistributedDataParallel):
+    """A wrapper for DistributedDataParallel."""
+    # succeed all the attributes and methods of DistributedDataParallel
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        # succeed all the attributes and methods from self.module
+        for name in dir(self.module):
+            if not hasattr(self, name):
+                setattr(self, name, getattr(self.module, name))

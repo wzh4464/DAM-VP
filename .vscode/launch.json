@@ -55,5 +55,62 @@
                 "CUDA_VISIBLE_DEVICES": "0,1"
             }
         },
+        // python -m torch.distributed.launch \
+            // --nproc_per_node=NUM_GPUS_PER_NODE \
+            // --nnodes=NUM_NODES \
+            // --node_rank=NODE_RANK \
+            // --master_addr="MASTER_ADDR" \
+            // --master_port=MASTER_PORT \
+            // YOUR_TRAINING_SCRIPT.py (--arg1 ... train script args...)
+        {
+            "name": "Python: torch.distributed.launch",
+            // torchrun
+            "type": "python",
+            "request": "launch",
+            "console": "integratedTerminal",
+            "module": "torch.distributed.launch",
+            // "program": "${workspaceFolder}/task_adapting/main.py",
+            "justMyCode": true,
+            "args": [
+                "--nproc_per_node=3",
+                "--nnodes=1",
+                "--node_rank=0",
+                "--master_addr=localhost",
+                "--master_port=1234",
+                "task_adapting/main.py",
+                "--batch_size",
+                "3",
+                "--base_dir",
+                "../dataset",
+                "--pretrained_model",
+                "vit-b-1k",
+                "--adapt_method",
+                "prompt_wo_head",
+                "--test_dataset",
+                "oxford-flowers",
+                "--epochs",
+                "50",
+                "--lr",
+                "0.5",
+                "--weight_decay",
+                "1e-4",
+                "--checkpoint_dir",
+                "checkpoints/vit-b-1k-wo-head.pth",
+                "--dataset",
+                "vtab-caltech101",
+                "--num_gpus",
+                "3",
+                "--distributed",
+            ],
+            "env": {
+                "PYTHONPATH": "~/miniconda3/envs/dam_vp/bin/python",
+                "CUDA_VISIBLE_DEVICES": "0,1,2",
+                "MASTER_ADDR": "localhost",
+                "MASTER_PORT": "1234",
+                "WORLD_SIZE": "3",
+                "RANK": "0",
+                "LOCAL_RANK": "0",
+            }
+        },
     ]
 }

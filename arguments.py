@@ -103,7 +103,7 @@ DATASET_DIVERSITIES = {
 
 
 class Arguments:
-    def __init__(self, stage='task_adapting'):
+    def __init__(self, stage='task_adapting', distributed=False):
         self._parser = argparse.ArgumentParser(description='Diversity-Aware Meta Visual Prompting.')
 
         self.add_common_args()
@@ -113,6 +113,9 @@ class Arguments:
             self.add_task_adapt_args()
         else:
             raise NotSupportedError
+        # if distributed:
+        self._parser.add_argument('--local_rank', type=int, default=0)
+        self._parser.add_argument('--world_size', type=int, default=1)
 
     def add_common_args(self):
         ### log related

@@ -72,7 +72,7 @@ def logging_train_setup(args) -> None:
         args.num_gpus, get_world_size(), output_dir, name="dam-vp")
 
     # Log basic information about environment, cmdline arguments, and config
-    rank = get_rank()
+    rank = args.local_rank
     logger.info(
         f"Rank of current process: {rank}. World size: {get_world_size()}")
     logger.info("Environment info:\n" + collect_env_info())
