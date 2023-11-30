@@ -111,7 +111,7 @@ def _construct_loader(args, dataset, split, batch_size, shuffle, drop_last):
     else:
         assert (
             dataset_name in _DATASET_CATALOG.keys()
-        ), "Dataset '{}' not supported".format(dataset_name)
+        ), f"Dataset '{dataset_name}' not supported"
         args.data_dir = os.path.join(args.base_dir, _DATA_DIR_CATALOG[dataset_name])
         dataset = _DATASET_CATALOG[dataset_name](args, split)
 
@@ -135,35 +135,29 @@ def _construct_loader(args, dataset, split, batch_size, shuffle, drop_last):
 
 def construct_train_loader(args, dataset=None):
     """Train loader wrapper."""
-    if args.distributed:
-        drop_last = True
-    else:
-        drop_last = False
+    drop_last = bool(args.distributed)
+    args.batch_size = int(args.batch_size / args.num_gpus)
     return _construct_loader(
         args=args,
         split="train",
-        batch_size=int(args.batch_size / args.num_gpus),
+        batch_size=args.batch_size,
         # batch_size=args.batch_size,
         shuffle=True,
         drop_last=drop_last,
-        dataset=dataset if dataset else args.dataset
+        dataset=dataset or args.dataset
     )
 
 
 def construct_val_loader(args, dataset=None, batch_size=None):
     """Validation loader wrapper."""
-    if batch_size is None:
-        bs = int(args.batch_size / args.num_gpus)
-        # bs = args.batch_size
-    else:
-        bs = batch_size
+    bs = int(args.batch_size / args.num_gpus) if batch_size is None else batch_size
     return _construct_loader(
         args=args,
         split="val",
         batch_size=bs,
         shuffle=False,
         drop_last=False,
-        dataset=dataset if dataset else args.dataset
+        dataset=dataset or args.dataset
     )
 
 
@@ -175,7 +169,7 @@ def construct_test_loader(args, dataset=None):
         batch_size=int(args.batch_size / args.num_gpus),
         shuffle=False,
         drop_last=False,
-        dataset=dataset if dataset else args.dataset
+        dataset=dataset or args.dataset
     )
 
 
@@ -183,7 +177,7 @@ def shuffle(loader, cur_epoch):
     """"Shuffles the data."""
     assert isinstance(
         loader.sampler, (RandomSampler, DistributedSampler)
-    ), "Sampler type '{}' not supported".format(type(loader.sampler))
+    ), f"Sampler type '{type(loader.sampler)}' not supported"
     # RandomSampler handles shuffling automatically
     if isinstance(loader.sampler, DistributedSampler):
         # DistributedSampler shuffles data based on epoch
