@@ -1,5 +1,6 @@
 # Copyright (c) 2015-present, Facebook, Inc.
 # All rights reserved.
+import logging
 import torch
 import torch.nn as nn
 from functools import partial
@@ -149,12 +150,14 @@ class PatchEmbed(nn.Module):
                               kernel_size=patch_size, stride=patch_size)
 
     def forward(self, x):
-        stack = inspect.stack()
-        print("PatchEmbed: ", stack[1][3])
+        # stack = inspect.stack()
+        # print("PatchEmbed: ", stack[1][3])
         B, C, H, W = x.shape
         # FIXME look at relaxing size constraints
         assert H == self.img_size[0] and W == self.img_size[1], \
-            f"Input image size ({H}*{W}) doesn't match model ({self.img_size[0]}*{self.img_size[1]})."
+                        f"Input image size ({H}*{W}) doesn't match model ({self.img_size[0]}*{self.img_size[1]})."
+        # logging.info(f"x.device: {x.device}")
+        # logging.info(f"self.proj.weight.device: {self.proj.weight.device}")
         x = self.proj(x).flatten(2).transpose(1, 2)
         return x
 

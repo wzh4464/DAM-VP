@@ -79,6 +79,54 @@
                 "showReuseMessage": true,
                 "clear": false
             }
+        },
+        {
+            "label": "Run PyTorch Distributed",
+            "type": "shell",
+            "command": "conda",
+            "args": [
+                "run",
+                "-n", "dam_vp",
+                "python",
+                "-m", "torch.distributed.launch",
+                "--nproc_per_node=3",
+                "--nnodes=1",
+                "--node_rank=0",
+                "--master_addr=localhost",
+                "--master_port=1234",
+                "task_adapting/main.py",
+                "--batch_size", "96",
+                "--base_dir", "../dataset",
+                "--pretrained_model", "vit-b-1k",
+                "--adapt_method", "prompt_wo_head",
+                "--test_dataset", "oxford-flowers",
+                "--epochs", "50",
+                "--lr", "0.5",
+                "--weight_decay", "1e-4",
+                "--checkpoint_dir", "checkpoints/vit-b-1k-wo-head.pth",
+                "--dataset", "vtab-caltech101",
+                "--num_gpus", "3",
+                "--distributed"
+            ],
+            "group": {
+                "kind": "build",
+                "isDefault": true
+            },
+            "presentation": {
+                "reveal": "always",
+                "panel": "new"
+            },
+            "problemMatcher": [],
+            "options": {
+                "env": {
+                    "CUDA_VISIBLE_DEVICES": "0,1,2",
+                    "MASTER_ADDR": "localhost",
+                    "MASTER_PORT": "1234",
+                    "WORLD_SIZE": "3",
+                    "RANK": "0",
+                    "LOCAL_RANK": "0"
+                }
+            }
         }
     ]
 }
