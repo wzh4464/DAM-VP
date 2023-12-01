@@ -2,11 +2,7 @@
 from __future__ import print_function
 
 import os
-from subprocess import check_output
 import sys
-import numpy as np
-from tqdm import tqdm
-from copy import deepcopy
 
 import torch
 
@@ -18,7 +14,6 @@ sys.path.append(os.path.join(ROOT_DIR, '../'))
 from arguments import Arguments
 import utils.logging as logging
 from utils.functional import set_seed
-from models import *
 from adapter import Adapter
 from data_utils import loader as data_loader
 from models import builder as model_builder
@@ -30,13 +25,13 @@ def load_dataset(args):
     """Load datasets for task adaption.
     """
     set_seed(args.seed)
-    # load test
-    minis_test = [
-        data_loader.construct_train_loader(args, args.test_dataset), 
-        data_loader.construct_val_loader(args, args.test_dataset, batch_size=args.batch_size),
-        data_loader.construct_test_loader(args, args.test_dataset)
+    return [
+        data_loader.construct_train_loader(args, args.test_dataset),
+        data_loader.construct_val_loader(
+            args, args.test_dataset, batch_size=args.batch_size
+        ),
+        data_loader.construct_test_loader(args, args.test_dataset),
     ]
-    return minis_test
 
 
 def main():
@@ -57,11 +52,11 @@ def main():
     # start task adaption
     if args.adapt_method == "prompt_wo_head":
         prompter_path = None if args.checkpoint_dir == "" else os.path.join(BASE_DIR, args.checkpoint_dir)
-        accs = metalearner.our_method(minis_test, prompter_path)
+        metalearner.our_method(minis_test, prompter_path)
 
     elif args.adapt_method == "prompt_w_head":
         prompter_path = None if args.checkpoint_dir == "" else os.path.join(BASE_DIR, args.checkpoint_dir)
-        accs = metalearner.our_method_with_head(minis_test, prompter_path)
+        metalearner.our_method_with_head(minis_test, prompter_path)
 
     else:
         raise NotImplementedError
