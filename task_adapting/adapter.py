@@ -1,16 +1,10 @@
 import os
-from statistics import mode
 import sys
-from tkinter.messagebox import NO
 import numpy as np
-import pandas as pd 
-import os.path as osp
 from copy import deepcopy
 
 import torch
 import torch.nn as nn
-import torch.optim as optim
-import torch.nn.functional as F
 import sklearn.cluster as cluster
 
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
@@ -148,7 +142,7 @@ class Adapter(object):
             for i, sample in enumerate(train_loader):
                 image = sample["image"].to(self.devicename)
                 rep = self.model.forward_features(image)
-                rep_gather = rep if i < 1 else torch.cat([rep_gather, rep], dim=0)
+                rep_gather = rep if i < 1 else torch.cat([rep_gather, rep], dim=0)  # noqa: F821
 
                 if rep_gather.size(0) > 1000:
                     rep_gather = rep_gather[:1000]
@@ -259,7 +253,7 @@ class Adapter(object):
                     correct += (pred == label).sum().item()
                     num_total += image.size(0)
                 acc_val = float(correct / num_total)
-                logger.info(f"[Prompt Validating] Epoch: {epoch}, Val acc: {acc_val}")
+                logger.info(f"[Prompt Validating] Epoch: {epoch}, Val acc: {acc_val}, device: {self.devicename}")
                 if acc_val > BEST_ACC_VAL:
                     BEST_ACC_VAL = acc_val
                     if self.args.wo_da:
@@ -364,7 +358,7 @@ class Adapter(object):
                     correct += (pred == label).sum().item()
                     num_total += image.size(0)
                 acc_val = float(correct / num_total)
-                logger.info(f"[Prompt Validating] Epoch: {epoch}, Val acc: {acc_val}")
+                logger.info(f"[Prompt Validating] Epoch: {epoch}, Val acc: {acc_val}, device: {self.devicename}")
                 if acc_val > BEST_ACC_VAL:
                     BEST_ACC_VAL = acc_val
                     if self.args.wo_da:

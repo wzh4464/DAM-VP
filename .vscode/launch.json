@@ -1,8 +1,4 @@
 {
-    // 使用 IntelliSense 了解相关属性。 
-    // 悬停以查看现有属性的描述。
-    // 欲了解更多信息，请访问: https://go.microsoft.com/fwlink/?linkid=830387
-    // command: ~/miniconda3/envs/dam_vp/bin/python meta-training/main_hf.py --base_dir data/FGVC --pretrained_model vit-b-1k --meta_lr 0.5 --update_lr 0.5 --update_step 4 --meta_step_size 0.5 --test_dataset oxford-flowers
     "configurations": [
         {
             "name": "Python: main",
@@ -38,7 +34,6 @@
                 "CUDA_VISIBLE_DEVICES": "0,1,2"
             }
         },
-        // python data_utils/datasets/oxfordpet/dataset.py --data_dir ~/dataset
         {
             "name": "Python: oxfordpet/dataset.py",
             "type": "python",
@@ -55,21 +50,12 @@
                 "CUDA_VISIBLE_DEVICES": "0,1"
             }
         },
-        // python -m torch.distributed.launch \
-            // --nproc_per_node=NUM_GPUS_PER_NODE \
-            // --nnodes=NUM_NODES \
-            // --node_rank=NODE_RANK \
-            // --master_addr="MASTER_ADDR" \
-            // --master_port=MASTER_PORT \
-            // YOUR_TRAINING_SCRIPT.py (--arg1 ... train script args...)
         {
             "name": "Python: torch.distributed.launch",
-            // torchrun
             "type": "python",
             "request": "launch",
             "console": "integratedTerminal",
             "module": "torch.distributed.launch",
-            // "program": "${workspaceFolder}/task_adapting/main.py",
             "justMyCode": true,
             "args": [
                 "--nproc_per_node=3",
@@ -100,7 +86,7 @@
                 "vtab-caltech101",
                 "--num_gpus",
                 "3",
-                "--distributed",
+                "--distributed"
             ],
             "env": {
                 "PYTHONPATH": "~/miniconda3/envs/dam_vp/bin/python",
@@ -109,17 +95,15 @@
                 "MASTER_PORT": "1234",
                 "WORLD_SIZE": "3",
                 "RANK": "0",
-                "LOCAL_RANK": "0",
+                "LOCAL_RANK": "0"
             }
         },
         {
             "name": "Python: distributed cifar10",
-            // torchrun
             "type": "python",
             "request": "launch",
             "console": "integratedTerminal",
             "module": "torch.distributed.launch",
-            // "program": "${workspaceFolder}/task_adapting/main.py",
             "justMyCode": true,
             "args": [
                 "--nproc_per_node=3",
@@ -152,7 +136,7 @@
                 "cifar10",
                 "--num_gpus",
                 "3",
-                "--distributed",
+                "--distributed"
             ],
             "env": {
                 "PYTHONPATH": "~/miniconda3/envs/dam_vp/bin/python",
@@ -161,8 +145,15 @@
                 "MASTER_PORT": "1234",
                 "WORLD_SIZE": "3",
                 "RANK": "0",
-                "LOCAL_RANK": "0",
+                "LOCAL_RANK": "0"
             }
         },
+        {
+            "name": "Python: File",
+            "type": "python",
+            "request": "launch",
+            "program": "${file}",
+            "justMyCode": true
+        }
     ]
 }
