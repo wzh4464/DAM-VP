@@ -81,7 +81,7 @@
             }
         },
         {
-            "label": "Run PyTorch Distributed",
+            "label": "Run PyTorch Distributed cifar10",
             "type": "shell",
             "command": "conda",
             "args": [
@@ -95,16 +95,17 @@
                 "--master_addr=localhost",
                 "--master_port=1234",
                 "task_adapting/main.py",
+                "--output_dir", "result/cifar10",
                 "--batch_size", "96",
-                "--base_dir", "../dataset",
+                "--base_dir", "~/dataset",
                 "--pretrained_model", "vit-b-1k",
                 "--adapt_method", "prompt_wo_head",
-                "--test_dataset", "oxford-flowers",
+                "--test_dataset", "cifar10",
                 "--epochs", "50",
                 "--lr", "0.5",
                 "--weight_decay", "1e-4",
                 "--checkpoint_dir", "checkpoints/vit-b-1k-wo-head.pth",
-                "--dataset", "vtab-caltech101",
+                "--dataset", "cifar10",
                 "--num_gpus", "3",
                 "--distributed"
             ],
