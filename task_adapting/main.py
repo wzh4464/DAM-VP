@@ -20,7 +20,6 @@ from models import builder as model_builder
 from launch import logging_train_setup
 
 
-
 def load_dataset(args):
     """Load datasets for task adaption.
     """
@@ -51,25 +50,26 @@ def main():
 
     # start task adaption
     if args.adapt_method == "prompt_wo_head":
-        prompter_path = None if args.checkpoint_dir == "" else os.path.join(BASE_DIR, args.checkpoint_dir)
-        metalearner.our_method(minis_test, prompter_path)
+        prompter_path = None if args.checkpoint_dir == "" else os.path.join(
+            BASE_DIR, args.checkpoint_dir)
+        acc = metalearner.our_method(minis_test, prompter_path)
 
     elif args.adapt_method == "prompt_w_head":
-        prompter_path = None if args.checkpoint_dir == "" else os.path.join(BASE_DIR, args.checkpoint_dir)
-        metalearner.our_method_with_head(minis_test, prompter_path)
+        prompter_path = None if args.checkpoint_dir == "" else os.path.join(
+            BASE_DIR, args.checkpoint_dir)
+        acc = metalearner.our_method_with_head(minis_test, prompter_path)
 
     else:
         raise NotImplementedError
 
-
-
+    logger.info(f"Task adaption accuracy: {acc}")
 
 
 if __name__ == '__main__':
     # print transited arguments
     print(" ".join(sys.argv))
     torch.autograd.set_detect_anomaly(True)
-    
+
     # parse arguments
     args = Arguments(stage='task_adapting').parser().parse_args()
     args.device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')

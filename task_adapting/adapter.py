@@ -282,7 +282,8 @@ class Adapter(object):
     def our_method_with_head(self, test_data, prompter_path):
         """Diversity-Aware Meta Visual Prompting (Head-Tuning Version).
         """
-        logging.info(f"self.devicename: {self.devicename}")
+        logger = self.logger
+        logger.info(f"self.devicename: {self.devicename}")
         train_loader, val_loader, test_loader = test_data
         prompter = self.load_prompter(prompter_path)
         num_classes = data_loader._dataset_class_num(self.args.test_dataset)
@@ -343,7 +344,7 @@ class Adapter(object):
                 optimizer.step()
                 if (i + 1) % 1 == 0:
                     logger.info(
-                        f"[Prompt Finetuning] Epoch: [{epoch}/{self.args.epochs}], Step: [{i}/{len(train_loader)}], Training loss: {loss.item()}"
+                        f"[Prompt Finetuning] Epoch: [{epoch}/{self.args.epochs}], Step: [{i}/{len(train_loader)}], Training loss: {loss.item()}, device: {self.devicename}"
                     )
             # validate
             with torch.no_grad():
@@ -380,5 +381,5 @@ class Adapter(object):
                         correct += (pred == label).sum().item()
                         num_total += image.size(0)
                     acc_test = float(correct / num_total)
-                    logger.info(f"[Prompt Testing] Epoch: {epoch}, Test acc: {acc_test}")
+                    logger.info(f"[Prompt Testing] Epoch: {epoch}, Test acc: {acc_test}, device: {self.devicename}")
         return acc_test
