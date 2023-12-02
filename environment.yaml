@@ -72,6 +72,7 @@ dependencies:
   - libevent=2.1.12=h8f2d780_0
   - libffi=3.4.4=h6a678d5_0
   - libgcc-ng=11.2.0=h1234567_1
+  - libgfortran=3.0.0=1
   - libgfortran-ng=11.2.0=h00389a5_1
   - libgfortran5=11.2.0=h1234567_1
   - libgomp=11.2.0=h1234567_1
@@ -108,7 +109,7 @@ dependencies:
   - nspr=4.35=h6a678d5_0
   - nss=3.89.1=h6a678d5_0
   - numexpr=2.8.7=py39h286c3b5_0
-  - numpy-base=1.26.0=py39h8a23956_0
+  - openblas=0.3.4=ha44fe06_0
   - opencv=4.6.0=py39hd653453_2
   - openh264=2.1.1=h4ff587b_0
   - openjpeg=2.4.0=h3ad879b_0
@@ -116,6 +117,7 @@ dependencies:
   - orc=1.7.4=h07ed6aa_0
   - packaging=23.2=pyhd8ed1ab_0
   - pcre=8.45=h295c915_0
+  - pip=23.3.1=pyhd8ed1ab_0
   - pixman=0.40.0=h7f8727e_1
   - pyarrow=8.0.0=py39h992f0b0_0
   - pysocks=1.7.1=pyha2e5f31_6
@@ -136,6 +138,7 @@ dependencies:
   - six=1.16.0=pyh6c4a22f_0
   - snappy=1.1.9=hbd366e4_1
   - sqlite=3.41.2=h5eee18b_0
+  - tensorboardx=2.2=pyhd3eb1b0_0
   - tk=8.6.12=h1ccaba5_0
   - tqdm=4.66.1=pyhd8ed1ab_0
   - typing-extensions=4.8.0=hd8ed1ab_0
@@ -207,7 +210,6 @@ dependencies:
       - opt-einsum==3.3.0
       - pandas==1.4.3
       - pillow==9.0.1
-      - pip==23.3.1
       - portalocker==2.5.1
       - promise==2.3
       - protobuf==3.20.3
@@ -227,7 +229,6 @@ dependencies:
       - tbb==2021.10.0
       - tensorboard==2.14.1
       - tensorboard-data-server==0.7.2
-      - tensorboardx==2.5.1
       - tensorflow==2.14.0
       - tensorflow-addons==0.22.0
       - tensorflow-datasets==4.9.3
