@@ -1,0 +1,43 @@
+/home/zihan/miniconda3/envs/dam_vp/lib/python3.9/site-packages/torch/distributed/launch.py:178: FutureWarning: The module torch.distributed.launch is deprecated
+and will be removed in future. Use torchrun.
+Note that --use_env is set by default in torchrun.
+If your script expects `--local_rank` argument to be set, please
+change it to read from `os.environ['LOCAL_RANK']` instead. See 
+https://pytorch.org/docs/stable/distributed.html#launch-utility for 
+further instructions
+
+  warnings.warn(
+WARNING:torch.distributed.run:
+*****************************************
+Setting OMP_NUM_THREADS environment variable for each process to be 1 in default, to avoid your system being overloaded, please further tune the variable for optimal performance in your application as needed. 
+*****************************************
+WARNING:torch.distributed.elastic.agent.server.api:Received 1 death signal, shutting down workers
+WARNING:torch.distributed.elastic.multiprocessing.api:Sending process 786198 closing signal SIGHUP
+WARNING:torch.distributed.elastic.multiprocessing.api:Sending process 786199 closing signal SIGHUP
+WARNING:torch.distributed.elastic.multiprocessing.api:Sending process 786200 closing signal SIGHUP
+Traceback (most recent call last):
+  File "/home/zihan/miniconda3/envs/dam_vp/lib/python3.9/runpy.py", line 197, in _run_module_as_main
+    return _run_code(code, main_globals, None,
+  File "/home/zihan/miniconda3/envs/dam_vp/lib/python3.9/runpy.py", line 87, in _run_code
+    exec(code, run_globals)
+  File "/home/zihan/miniconda3/envs/dam_vp/lib/python3.9/site-packages/torch/distributed/launch.py", line 193, in <module>
+    main()
+  File "/home/zihan/miniconda3/envs/dam_vp/lib/python3.9/site-packages/torch/distributed/launch.py", line 189, in main
+    launch(args)
+  File "/home/zihan/miniconda3/envs/dam_vp/lib/python3.9/site-packages/torch/distributed/launch.py", line 174, in launch
+    run(args)
+  File "/home/zihan/miniconda3/envs/dam_vp/lib/python3.9/site-packages/torch/distributed/run.py", line 715, in run
+    elastic_launch(
+  File "/home/zihan/miniconda3/envs/dam_vp/lib/python3.9/site-packages/torch/distributed/launcher/api.py", line 131, in __call__
+    return launch_agent(self._config, self._entrypoint, list(args))
+  File "/home/zihan/miniconda3/envs/dam_vp/lib/python3.9/site-packages/torch/distributed/launcher/api.py", line 236, in launch_agent
+    result = agent.run()
+  File "/home/zihan/miniconda3/envs/dam_vp/lib/python3.9/site-packages/torch/distributed/elastic/metrics/api.py", line 125, in wrapper
+    result = f(*args, **kwargs)
+  File "/home/zihan/miniconda3/envs/dam_vp/lib/python3.9/site-packages/torch/distributed/elastic/agent/server/api.py", line 709, in run
+    result = self._invoke_run(role)
+  File "/home/zihan/miniconda3/envs/dam_vp/lib/python3.9/site-packages/torch/distributed/elastic/agent/server/api.py", line 850, in _invoke_run
+    time.sleep(monitor_interval)
+  File "/home/zihan/miniconda3/envs/dam_vp/lib/python3.9/site-packages/torch/distributed/elastic/multiprocessing/api.py", line 60, in _terminate_process_handler
+    raise SignalException(f"Process {os.getpid()} got signal: {sigval}", sigval=sigval)
+torch.distributed.elastic.multiprocessing.api.SignalException: Process 786176 got signal: 1
