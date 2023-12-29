@@ -174,7 +174,7 @@ class Adapter(object):
             self.args.test_dataset, self.prototype_gather.size(0)))
 
 
-    def our_method(self, test_data, prompter_path, class_names):
+    def damvp_method(self, test_data, prompter_path, class_names):
         """Diversity-Aware Meta Visual Prompting.
         """
         train_loader, val_loader, test_loader = test_data
