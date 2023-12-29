@@ -1,5 +1,7 @@
 import os
 import sys
+import time
+from typing import Any
 import numpy as np
 from copy import deepcopy
 
@@ -175,7 +177,7 @@ class Adapter(object):
             f"Nums of prototypes of coarse clusters for test dataset {self.args.test_dataset}: {self.prototype_gather.size(0)}"
         )
 
-    def our_method(self, test_data, prompter_path):
+    def damvp_method(self, test_data, prompter_path):
         """Diversity-Aware Meta Visual Prompting (Head-Freezing/Missing Version).
         """
         train_loader, val_loader, test_loader = test_data
@@ -288,8 +290,32 @@ class Adapter(object):
                         f"[Prompt Testing] Epoch: {epoch}, Test acc: {acc_test}, device: {self.devicename}")
         return acc_test
 
-    def our_method_with_head(self, test_data, prompter_path):
+    def damvp_method_with_head(self, test_data, prompter_path):
         """Diversity-Aware Meta Visual Prompting (Head-Tuning Version).
+        """
+        logger, train_loader, val_loader, test_loader, prompter \
+            = self.init_with_head_not_propmted(test_data, prompter_path)
+
+        self.model.get_classifier().train()  # unfreeze the head
+        best_prompter, optimizer, scheduler = self.make_opt_and_bpr(
+            len(train_loader), prompter)
+        BEST_ACC_VAL = -np.inf
+        for epoch in range(self.args.epochs):
+            # train
+            self.training_part(logger, train_loader, best_prompter,
+                               optimizer, scheduler, epoch, prompt_here=True)
+            # validate
+            best_prompter = self.make_validation(
+                logger, val_loader, best_prompter, BEST_ACC_VAL, epoch)
+            # test
+            if epoch > 0 and (epoch + 1) % 5 == 0:
+                acc_test = self.make_test(
+                    logger, test_loader, epoch, best_prompter)
+        return acc_test
+
+    def init_with_head_not_propmted(self, test_data, prompter_path):
+        """define logger, train_loader, val_loader, test_loader, prompter and do coarse clustering.
+        # ! To be removed
         """
         logger = self.logger
         logger.info(f"self.devicename: {self.devicename}")
@@ -300,44 +326,64 @@ class Adapter(object):
         self.model.get_classifier().to(self.devicename)
         if not self.args.wo_da:
             self.coarse_clustering(test_data)
+        return logger,train_loader,val_loader,test_loader,prompter
+    
+    def init_with_head(self, test_data, prompter_path):
+        """define logger, train_loader, val_loader, test_loader, prompter and do coarse clustering.
+        * test_data is prompted here
+        """
+        logger = self.logger
+        logger.info(f"self.devicename: {self.devicename}")
 
-        self.model.get_classifier().train()  # unfreeze the head
+        train_loader_len = len(test_data[0])
+
+        prompter = self.load_prompter(prompter_path)
+        
+        begin_time_cluster = time.time()
+
+        if not self.args.wo_da:
+            self.coarse_clustering(test_data)
+            # prototype_gather updated here
+
         best_prompter, optimizer, scheduler = self.make_opt_and_bpr(
-            train_loader, prompter)
-        BEST_ACC_VAL = -np.inf
-        for epoch in range(self.args.epochs):
-            # train
-            self.training_part(logger, train_loader, best_prompter,
-                               optimizer, scheduler, epoch)
-            # validate
-            best_prompter = self.make_validation(
-                logger, val_loader, best_prompter, BEST_ACC_VAL, epoch)
-            # test
-            if epoch > 0 and (epoch + 1) % 5 == 0:
-                acc_test = self.make_test(
-                    logger, test_loader, epoch, best_prompter)
-        return acc_test
+            train_loader_len, prompter)
+        
+        for loader in test_data:
+            for data_item in loader:
+                image = data_item["image"].to(self.devicename)
+                # data_item = self.get_prompted_image(data_item, self.prototype_gather, prompter_gather=best_prompter) if not self.args.wo_da else self.get_prompted_image(data_item, prompter=prompter)
+                data_item["image"] = self.get_prompted_image(image, self.prototype_gather, prompter_gather=best_prompter) if not self.args.wo_da else self.get_prompted_image(image, prompter=prompter)
+        
+        logger.info(f"Prompting time: {time.time() - begin_time_cluster}")
 
-    def training_part(self, logger, train_loader, prompter, optimizer, scheduler, epoch):
+        return logger, test_data[0], test_data[1], test_data[2], best_prompter, optimizer, scheduler
+    
+    def training_part(self, logger, train_loader, prompter, optimizer, scheduler, epoch, prompt_here=False):
         for i, sample in enumerate(train_loader):
             # adjust learning rate
             global_step = len(train_loader) * epoch + i
             scheduler(global_step)
             image = sample["image"].to(self.devicename)
             label = sample["label"].to(self.devicename)
-            # label[:int(self.args.batch_size/10)] = int(torch.randint(0, num_classes, (1,)).item())
-            prompted_image = self.get_prompted_image(image, prompter=prompter) \
-                if self.args.wo_da else self.get_prompted_image(image, self.prototype_gather, prompter_gather=prompter)
-            logits = self.model(prompted_image)
+
+            if prompt_here:
+                # training_part_dam specific code
+                prompted_image = self.get_prompted_image(image, prompter=prompter) if self.args.wo_da else self.get_prompted_image(image, self.prototype_gather, prompter_gather=prompter)
+                logits = self.model(prompted_image)
+            else:
+                # training_part specific code
+                logits = self.model(image)
+
             loss = self.loss_function(logits, label)
             optimizer.zero_grad()
             loss.backward()
-            # logger.info(prompter.pad_up.grad)
             optimizer.step()
+
             if (i + 1) % 1 == 0:
                 logger.info(
                     f"[Prompt Finetuning] Epoch: [{epoch}/{self.args.epochs}], Step: [{i}/{len(train_loader)}], Training loss: {loss.item()}, device: {self.devicename}"
                 )
+
 
     def make_test(self, logger, test_loader, epoch, best_prompter):
         with torch.no_grad():
@@ -376,7 +422,7 @@ class Adapter(object):
                 best_prompter = deepcopy(prompter)
         return best_prompter
 
-    def make_opt_and_bpr(self, train_loader, _prompter):
+    def make_opt_and_bpr(self, train_loader_len, _prompter):
         if self.args.wo_da:
             # prompter = deepcopy(prompter)
             optimizer = torch.optim.SGD([
@@ -404,8 +450,71 @@ class Adapter(object):
         scheduler = cosine_lr(
             optimizer,
             self.lr,
-            len(train_loader) * self.args.epochs // 5,
-            len(train_loader) * self.args.epochs
+            train_loader_len * self.args.epochs // 5,
+            train_loader_len * self.args.epochs
         )
 
         return prompter, optimizer, scheduler
+
+    def our_method_with_head(self, test_data, prompter_path):
+        """Diversity-Aware Meta Visual Prompting (Head-Tuning Version) revised aiming at eraseing.
+
+        1. Split the cluster and train the prompter for each cluster.
+        """
+        # AGGREATE_METHOD_DICT = {
+        #     "nearest": Aggregate.nearest,
+        #     "average": Aggregate.average,
+        #     "majority": Aggregate.majority,
+        #     "gaussian": Aggregate.gaussian
+        # }
+
+        logger, train_loader, val_loader, test_loader, best_prompter, optimizer, scheduler \
+            = self.init_with_head(test_data, prompter_path)
+        
+        self.model.get_classifier().train()
+        BEST_ACC_VAL = -np.inf
+
+        # logger out: *** our method with head ***
+        logger.info("*** our method with head ***")
+
+        # label with cluster result
+        for epoch in range(self.args.epochs):
+            # train
+            self.training_part(logger, train_loader, best_prompter,
+                               optimizer, scheduler, epoch, prompt_here=False)
+            # validate
+            best_prompter = self.make_validation(
+                logger, val_loader, best_prompter, BEST_ACC_VAL, epoch)
+            # test
+            if epoch > 0 and (epoch + 1) % 5 == 0:
+                acc_test = self.make_test(
+                    logger, test_loader, epoch, best_prompter)
+        return acc_test
+
+class Aggregate(object):
+    """Aggregate the prompted images to the original image.
+    """
+
+    @staticmethod
+    def nearest(prompted_image, image):
+        """Nearest Neighbor.
+        """
+        return prompted_image
+
+    @staticmethod
+    def average(prompted_image, image):
+        """Average.
+        """
+        return (prompted_image + image) / 2
+
+    @staticmethod
+    def majority(prompted_image, image):
+        """Majority.
+        """
+        return prompted_image
+
+    @staticmethod
+    def gaussian(prompted_image, image):
+        """Gaussian.
+        """
+        return prompted_image

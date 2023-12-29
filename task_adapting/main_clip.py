@@ -64,7 +64,7 @@ def main():
     # start task adapting
     if args.adapt_method == "prompt_wo_head":
         prompter_path = None if args.checkpoint_dir == "" else os.path.join(BASE_DIR, args.checkpoint_dir)
-        accs = metalearner.our_method(minis_test, prompter_path, class_names)
+        accs = metalearner.damvp_method(minis_test, prompter_path, class_names)
 
     elif args.adapt_method == "prompt_w_head":
         raise NotImplementedError("The CLIP version of head-tuning version is not available here.")

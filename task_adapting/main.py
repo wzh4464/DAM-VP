@@ -22,10 +22,14 @@ from launch import logging_train_setup
 
 def load_dataset(args):
     """Load datasets for task adaption.
+    @ return: a list of dataloaders for meta train, meta val and meta test.
+    return[0]: meta train dataloader
+    return[1]: meta val dataloader
+    return[2]: meta test dataloader
     """
     set_seed(args.seed)
     return [
-        data_loader.construct_train_loader(args, args.test_dataset),
+        data_loader.construct_train_loader(args, args.test_dataset), # torch.utils.data.DataLoader
         data_loader.construct_val_loader(
             args, args.test_dataset, batch_size=args.batch_size
         ),
@@ -53,7 +57,7 @@ def main():
     if args.adapt_method == "prompt_wo_head":
         prompter_path = None if args.checkpoint_dir == "" else os.path.join(
             BASE_DIR, args.checkpoint_dir)
-        acc = metalearner.our_method(minis_test, prompter_path)
+        acc = metalearner.damvp_method(minis_test, prompter_path)
 
     elif args.adapt_method == "prompt_w_head":
         prompter_path = None if args.checkpoint_dir == "" else os.path.join(
