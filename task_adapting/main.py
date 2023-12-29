@@ -18,6 +18,7 @@ from adapter import Adapter
 from data_utils import loader as data_loader
 from models import builder as model_builder
 from launch import logging_train_setup
+from aggregation import averageAggregation, majorityAggregation, nearestAggregation, gaussianAggregation
 
 
 def load_dataset(args):
@@ -50,7 +51,7 @@ def main():
     model, cur_device = model_builder._construct_model(args)
 
     # initialize meta-learner
-    metalearner = Adapter(args, model)
+    metalearner = Adapter(args, model, averageAggregation())
     metalearner.model.to(cur_device)
 
     # start task adaption

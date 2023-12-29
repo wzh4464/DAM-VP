@@ -21,6 +21,7 @@ from utils.train_utils import cosine_lr
 import utils.logging as logging
 
 from arguments import Arguments
+from aggregation import AggregationStrategy, nearestAggregation
 
 
 logger = logging.get_logger("dam-vp")
@@ -28,9 +29,11 @@ logger = logging.get_logger("dam-vp")
 
 class Adapter(object):
     """A Gather of Our Task Adapting Methods.
+
+    use strategy mode
     """
 
-    def __init__(self, args: Arguments, model: bb.VisionTransformer):
+    def __init__(self, args: Arguments, model: bb.VisionTransformer, aggregation_strategy: AggregationStrategy = nearestAggregation()):
         super(Adapter, self).__init__()
         self.args = args
         self.model: bb.VisionTransformer = model.eval()
@@ -53,6 +56,7 @@ class Adapter(object):
         self.logger.info(f"self.devicename: {self.devicename}")
 
         self.local_batch_size = args.batch_size // args.world_size
+        self.aggregation_strategy = aggregation_strategy
 
     def nums_of_learnable_params(self, model):
         n_parameters = sum(p.numel()
@@ -68,7 +72,7 @@ class Adapter(object):
         """Load the trained visual prompter.
         """
         prompter = prompters.__dict__[self.args.prompt_method](
-            self.args).to(self.devicename)
+            self.args).to(self.devicename) # prompt_method: pad, fixed, random, default: prompter = padding(args)
         if prompter_path is not None:
             checkpoint = torch.load(prompter_path)
             prompter.load_state_dict(checkpoint['state_dict'])
@@ -102,29 +106,20 @@ class Adapter(object):
         return output[:, indices]
 
     def get_prompted_image(self, image, prototype_gather=None, prompter=None, prompter_gather=None):
-        """Obtain the prompted batch images.
-        """
-        if self.args.wo_da:
-            assert prompter is not None
-            return prompter(image)
-        else:
-            assert prototype_gather is not None
-            assert prompter_gather is not None
-            with torch.no_grad():
-                rep_batch = self.model.forward_features(image)  # [N, emd_dim]
-                rep_batch_sum = (rep_batch**2).sum(dim=-1,
-                                                   keepdims=True)  # [N, 1]
-                prototype_gather_sum = (
-                    prototype_gather**2).sum(dim=-1, keepdims=True).T  # [1, M]
-                distance_matrix = torch.sqrt(
-                    rep_batch_sum + prototype_gather_sum - 2 * torch.mm(rep_batch, prototype_gather.T))  # [N, M]
-                indices = torch.argmin(distance_matrix, dim=-1)  # [B]
+        """Obtain the prompted batch images with specified aggregation method."""
+        if not self.args.wo_da:
+            return self.get_prompted_image_w_da(
+                prototype_gather, prompter_gather, image
+            )
+        assert prompter is not None
+        return prompter(image)
 
-            prompted_image = [
-                prompter_gather[indices[idx]](image[idx].unsqueeze(0))
-                for idx in range(rep_batch.size(0))
-            ]
-            return torch.cat(prompted_image, dim=0)
+    def get_prompted_image_w_da(self, prototype_gather, prompter_gather, image):
+        assert prototype_gather is not None
+        assert prompter_gather is not None
+        with torch.no_grad():
+            rep_batch = self.model.forward_features(image)  # [N, emd_dim]
+            return self.aggregation_strategy.get_prompted_images(rep_batch, prototype_gather, image, prompter_gather)
 
     def coarse_clustering(self, data_loader):
         """Diversity-Aware Adaption on downstream data.
@@ -294,7 +289,7 @@ class Adapter(object):
         """Diversity-Aware Meta Visual Prompting (Head-Tuning Version).
         """
         logger, train_loader, val_loader, test_loader, prompter \
-            = self.init_with_head_not_propmted(test_data, prompter_path)
+            = self.init_with_head_not_prompted(test_data, prompter_path)
 
         self.model.get_classifier().train()  # unfreeze the head
         best_prompter, optimizer, scheduler = self.make_opt_and_bpr(
@@ -313,7 +308,7 @@ class Adapter(object):
                     logger, test_loader, epoch, best_prompter)
         return acc_test
 
-    def init_with_head_not_propmted(self, test_data, prompter_path):
+    def init_with_head_not_prompted(self, test_data, prompter_path):
         """define logger, train_loader, val_loader, test_loader, prompter and do coarse clustering.
         # ! To be removed
         """
@@ -326,8 +321,8 @@ class Adapter(object):
         self.model.get_classifier().to(self.devicename)
         if not self.args.wo_da:
             self.coarse_clustering(test_data)
-        return logger,train_loader,val_loader,test_loader,prompter
-    
+        return logger, train_loader, val_loader, test_loader, prompter
+
     def init_with_head(self, test_data, prompter_path):
         """define logger, train_loader, val_loader, test_loader, prompter and do coarse clustering.
         * test_data is prompted here
@@ -338,7 +333,7 @@ class Adapter(object):
         train_loader_len = len(test_data[0])
 
         prompter = self.load_prompter(prompter_path)
-        
+
         begin_time_cluster = time.time()
 
         if not self.args.wo_da:
@@ -347,17 +342,18 @@ class Adapter(object):
 
         best_prompter, optimizer, scheduler = self.make_opt_and_bpr(
             train_loader_len, prompter)
-        
+
         for loader in test_data:
             for data_item in loader:
                 image = data_item["image"].to(self.devicename)
                 # data_item = self.get_prompted_image(data_item, self.prototype_gather, prompter_gather=best_prompter) if not self.args.wo_da else self.get_prompted_image(data_item, prompter=prompter)
-                data_item["image"] = self.get_prompted_image(image, self.prototype_gather, prompter_gather=best_prompter) if not self.args.wo_da else self.get_prompted_image(image, prompter=prompter)
-        
+                data_item["image"] = self.get_prompted_image(
+                    image, self.prototype_gather, prompter_gather=best_prompter) if not self.args.wo_da else self.get_prompted_image(image, prompter=prompter)
+
         logger.info(f"Prompting time: {time.time() - begin_time_cluster}")
 
         return logger, test_data[0], test_data[1], test_data[2], best_prompter, optimizer, scheduler
-    
+
     def training_part(self, logger, train_loader, prompter, optimizer, scheduler, epoch, prompt_here=False):
         for i, sample in enumerate(train_loader):
             # adjust learning rate
@@ -368,7 +364,8 @@ class Adapter(object):
 
             if prompt_here:
                 # training_part_dam specific code
-                prompted_image = self.get_prompted_image(image, prompter=prompter) if self.args.wo_da else self.get_prompted_image(image, self.prototype_gather, prompter_gather=prompter)
+                prompted_image = self.get_prompted_image(image, prompter=prompter) if self.args.wo_da else self.get_prompted_image(
+                    image, self.prototype_gather, prompter_gather=prompter)
                 logits = self.model(prompted_image)
             else:
                 # training_part specific code
@@ -383,7 +380,6 @@ class Adapter(object):
                 logger.info(
                     f"[Prompt Finetuning] Epoch: [{epoch}/{self.args.epochs}], Step: [{i}/{len(train_loader)}], Training loss: {loss.item()}, device: {self.devicename}"
                 )
-
 
     def make_test(self, logger, test_loader, epoch, best_prompter):
         with torch.no_grad():
@@ -461,16 +457,9 @@ class Adapter(object):
 
         1. Split the cluster and train the prompter for each cluster.
         """
-        # AGGREATE_METHOD_DICT = {
-        #     "nearest": Aggregate.nearest,
-        #     "average": Aggregate.average,
-        #     "majority": Aggregate.majority,
-        #     "gaussian": Aggregate.gaussian
-        # }
-
         logger, train_loader, val_loader, test_loader, best_prompter, optimizer, scheduler \
             = self.init_with_head(test_data, prompter_path)
-        
+
         self.model.get_classifier().train()
         BEST_ACC_VAL = -np.inf
 
@@ -490,31 +479,3 @@ class Adapter(object):
                 acc_test = self.make_test(
                     logger, test_loader, epoch, best_prompter)
         return acc_test
-
-class Aggregate(object):
-    """Aggregate the prompted images to the original image.
-    """
-
-    @staticmethod
-    def nearest(prompted_image, image):
-        """Nearest Neighbor.
-        """
-        return prompted_image
-
-    @staticmethod
-    def average(prompted_image, image):
-        """Average.
-        """
-        return (prompted_image + image) / 2
-
-    @staticmethod
-    def majority(prompted_image, image):
-        """Majority.
-        """
-        return prompted_image
-
-    @staticmethod
-    def gaussian(prompted_image, image):
-        """Gaussian.
-        """
-        return prompted_image
