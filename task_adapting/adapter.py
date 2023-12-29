@@ -361,25 +361,25 @@ class Adapter(object):
             scheduler(global_step)
             image = sample["image"].to(self.devicename)
             label = sample["label"].to(self.devicename)
+            prompted_image = self.get_prompted_image(image, prompter=prompter) if self.args.wo_da else self.get_prompted_image(
+                image, self.prototype_gather, prompter_gather=prompter)
 
             if prompt_here:
                 # training_part_dam specific code
-                prompted_image = self.get_prompted_image(image, prompter=prompter) if self.args.wo_da else self.get_prompted_image(
-                    image, self.prototype_gather, prompter_gather=prompter)
                 logits = self.model(prompted_image)
+                loss = self.loss_function(logits, label)
+                
             else:
                 # training_part specific code
-                logits = self.model(image)
-
-            loss = self.loss_function(logits, label)
+                loss = self.aggregation_strategy.get_loss(prompted_image, self.model, label, self.criterion)
+            
             optimizer.zero_grad()
             loss.backward()
             optimizer.step()
 
-            if (i + 1) % 1 == 0:
-                logger.info(
-                    f"[Prompt Finetuning] Epoch: [{epoch}/{self.args.epochs}], Step: [{i}/{len(train_loader)}], Training loss: {loss.item()}, device: {self.devicename}"
-                )
+            logger.info(
+                f"[Prompt Finetuning] Epoch: [{epoch}/{self.args.epochs}], Step: [{i}/{len(train_loader)}], Training loss: {loss.item()}, device: {self.devicename}"
+            )
 
     def make_test(self, logger, test_loader, epoch, best_prompter):
         with torch.no_grad():

@@ -3,7 +3,7 @@ File: /aggregation.py
 Created Date: Friday, December 29th, 2023
 Author: Zihan
 -----
-Last Modified: Friday, 29th December 2023 8:54:21 pm
+Last Modified: Saturday, 30th December 2023 12:44:38 am
 Modified By: the developer formerly known as Zihan at <wzh4464@gmail.com>
 -----
 HISTORY:
@@ -33,6 +33,23 @@ class AggregationStrategy(ABC):
 
         Returns:
             torch.Tensor: Tensor representing the prompted images.
+
+        """
+        pass
+
+    @abstractmethod
+    def get_loss(self, prompted_images, model, label, loss):
+        """
+        Retrieves the loss based on the given prompted images, model, label, and loss function.
+
+        Args:
+            prompted_images (torch.Tensor): Tensor representing the prompted images.
+            model (torch.nn.Module): The model to use for the forward pass.
+            label (torch.Tensor): Tensor representing the label.
+            loss (torch.nn.Module): The loss function to use.
+
+        Returns:
+            torch.Tensor: Tensor representing the loss.
 
         """
         pass
@@ -79,6 +96,12 @@ class nearestAggregation(AggregationStrategy):
         prompted_images = torch.cat(prompted_images, dim=0)
         return prompted_images
 
+    def get_loss(self, prompted_images, model, label, loss):
+        """Nearest Neighbor 的 get_loss
+
+        @return loss: [1]
+        """
+        return loss(model(prompted_images), label)
 
 class averageAggregation(AggregationStrategy):
     def get_prompted_images(self, rep_batch, prototype_gather, image, prompter_gather):
@@ -106,7 +129,32 @@ class majorityAggregation(AggregationStrategy):
             ]  # [P, C, H, W]
             for i in range(batch_size)
         ]  # [B, P, C, H, W]
+    
+    def get_loss(self, prompted_images, model, label, loss):
+        """Majority Voting 的 get_loss
 
+        @return loss: [1]
+        """
+        # get all losses for each prompted image
+        # losses
+        # first dimension: batch
+        # second dimension: prototype ind
+        # other dimension: loss
+        
+        logits = [
+            [
+                model(prompted_images[i][j])
+                for j in range(len(prompted_images[i]))
+            ]  # [P]
+            for i in range(len(prompted_images))
+        ] # [B, P]
+
+        majority_logits = torch.zeros(len(logits))
+        for i in range(len(logits)):
+            count = torch.bincount(logits[i])
+            majority_logits[i] = torch.argmax(count)
+            
+        return loss(majority_logits, label)
 
 class gaussianAggregation(AggregationStrategy):
     def get_prompted_images(self, rep_batch, prototype_gather, image, prompter_gather):
