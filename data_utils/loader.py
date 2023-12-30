@@ -136,12 +136,11 @@ def _construct_loader(args, dataset, split, batch_size, shuffle, drop_last):
 def construct_train_loader(args, dataset=None):
     """Train loader wrapper."""
     drop_last = bool(args.distributed)
-    args.batch_size = int(args.batch_size / args.num_gpus)
+    batch_size = int(args.batch_size / args.num_gpus)
     return _construct_loader(
         args=args,
         split="train",
-        batch_size=args.batch_size,
-        # batch_size=args.batch_size,
+        batch_size=batch_size,
         shuffle=True,
         drop_last=drop_last,
         dataset=dataset or args.dataset

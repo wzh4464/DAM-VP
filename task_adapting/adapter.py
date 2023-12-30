@@ -47,15 +47,12 @@ class Adapter(object):
         self.device = args.device
         self.rank = torch.distributed.get_rank() if torch.distributed.is_initialized() else 0
 
-        self.logger.info(f"self.args.device: {self.args.device}")
-        self.logger.info(f"self.rank: {self.rank}")
-
         # destination to this gpu -- .to(self.devicename)
         self.devicename = torch.device(
             f"cuda:{self.rank}" if torch.cuda.is_available() else "cpu")
         self.logger.info(f"self.devicename: {self.devicename}")
 
-        self.local_batch_size = args.batch_size // args.world_size
+        self.local_batch_size = args.batch_size // args.num_gpus
         self.aggregation_strategy = aggregation_strategy
 
     def nums_of_learnable_params(self, model):
@@ -130,21 +127,21 @@ class Adapter(object):
             ]
             return torch.cat(prompted_image, dim=0)
 
-    def get_prompted_image_val(self, image, prototype_gather=None, prompter=None, prompter_gather=None):
+    def get_prompted_image_val(self, sample, prototype_gather=None, prompter=None, prompter_gather=None):
         """Obtain the prompted batch images with specified aggregation method."""
         if not self.args.wo_da:
             return self.get_prompted_image_w_da(
-                prototype_gather, prompter_gather, image
+                prototype_gather, prompter_gather, sample
             )
         assert prompter is not None
-        return prompter(image)
+        return prompter(sample["image"].to(self.devicename))
 
-    def get_prompted_image_w_da(self, prototype_gather, prompter_gather, image):
+    def get_prompted_image_w_da(self, prototype_gather, prompter_gather, sample):
         assert prototype_gather is not None
         assert prompter_gather is not None
         with torch.no_grad():
-            rep_batch = self.model.forward_features(image)  # [N, emd_dim]
-            return self.aggregation_strategy.get_prompted_images(rep_batch, prototype_gather, image, prompter_gather)
+            # rep_batch = self.model.forward_features(image)  # [N, emd_dim]
+            return self.aggregation_strategy.get_prompted_images(sample, prototype_gather, prompter_gather, self)
 
     def coarse_clustering(self, data_loader):
         """Diversity-Aware Adaption on downstream data.
@@ -165,9 +162,9 @@ class Adapter(object):
             "moco-v3-b-1k": 18
         }
         hc = cluster.AgglomerativeClustering(
-            n_clusters=None,
+            n_clusters=20,
             linkage='average',
-            distance_threshold=threshold_dict[self.args.pretrained_model]
+            # distance_threshold=threshold_dict[self.args.pretrained_model]
         )
         with torch.no_grad():
             for i, sample in enumerate(train_loader):
@@ -323,7 +320,7 @@ class Adapter(object):
         for epoch in range(self.args.epochs):
             # train
             self.training_part(logger, train_loader, best_prompter,
-                               optimizer, scheduler, epoch, prompt_here=True)
+                               optimizer, scheduler, epoch)
             # validate
             best_prompter = self.make_validation(
                 logger, val_loader, best_prompter, BEST_ACC_VAL, epoch)
@@ -348,6 +345,20 @@ class Adapter(object):
             self.coarse_clustering(test_data)
         return logger, train_loader, val_loader, test_loader, prompter
 
+    def get_rep_and_cluster(self, image, prototype_gather):
+        """Get representation and cluster index of the image.
+        """
+        with torch.no_grad():
+            self.logger.info(f"image.shape: {image.shape}")
+            rep = self.model.forward_features(image)
+            rep_sum = (rep**2).sum(dim=-1, keepdims=True)
+            prototype_gather_sum = (
+                prototype_gather**2).sum(dim=-1, keepdims=True).T
+            distance_matrix = torch.sqrt(
+                rep_sum + prototype_gather_sum - 2 * torch.mm(rep, prototype_gather.T))
+            cluster_idx = torch.argmin(distance_matrix, dim=-1)
+        return rep, cluster_idx
+
     def init_with_head(self, test_data, prompter_path):
         """define logger, train_loader, val_loader, test_loader, prompter and do coarse clustering.
         * test_data is prompted here
@@ -371,35 +382,43 @@ class Adapter(object):
         for loader in test_data:
             for data_item in loader:
                 image = data_item["image"].to(self.devicename)
-                # data_item = self.get_prompted_image(data_item, self.prototype_gather, prompter_gather=best_prompter) if not self.args.wo_da else self.get_prompted_image(data_item, prompter=prompter)
-                data_item["image"] = self.get_prompted_image(
-                    image, self.prototype_gather, prompter_gather=best_prompter) if not self.args.wo_da else self.get_prompted_image(image, prompter=prompter)
+                # add an attribute "cluster" to data_item
+                _, data_item["cluster"] = self.get_rep_and_cluster(
+                    image, self.prototype_gather)
+                del image
 
-        logger.info(f"Prompting time: {time.time() - begin_time_cluster}")
+        logger.info(f"Cluster time: {time.time() - begin_time_cluster}")
+        # remove cache
+        torch.cuda.empty_cache()
 
         return logger, test_data[0], test_data[1], test_data[2], best_prompter, optimizer, scheduler
 
-    def training_part(self, logger, train_loader, prompter, optimizer, scheduler, epoch, prompt_here=False):
+    def get_prompted_image_train(self, sample, prompter_gather):
+        """Obtain the prompted batch images.
+        """
+
+        with torch.no_grad():
+            prompted_list = [
+                prompter_gather[data_item["cluster"][0]](
+                    data_item["image"].to(self.devicename).unsqueeze(0))
+                for data_item in sample
+            ]
+
+        return torch.cat(prompted_list, dim=0)
+
+    def training_part(self, logger, train_loader, prompter, optimizer, scheduler, epoch):
         for i, sample in enumerate(train_loader):
             # adjust learning rate
             global_step = len(train_loader) * epoch + i
             scheduler(global_step)
-            image = sample["image"].to(self.devicename)
-            label = sample["label"].to(self.devicename)
 
-            if prompt_here:
-                # training_part_dam specific code
-                prompted_image = self.get_prompted_image(image, prompter=prompter) if self.args.wo_da else self.get_prompted_image(
-                    image, self.prototype_gather, prompter_gather=prompter)
-                logits = self.model(prompted_image)
-            else:
-                # training_part specific code
-                logits = self.model(image)
-
-            loss = self.loss_function(logits, label)
-            optimizer.zero_grad()
-            loss.backward()
-            optimizer.step()
+            prompted_image = self.get_prompted_image_train(sample, prompter)
+            logits = self.model(prompted_image)
+            loss = self.loss_function(
+                logits, sample["label"].to(self.devicename))
+            optimizer.zero_grad()  # zero_grad: clear the gradient of all optimized torch.Tensor
+            loss.backward()  # calculated: gradient of prompter
+            optimizer.step()  # updated: prompter
 
             logger.info(
                 f"[Prompt Finetuning] Epoch: [{epoch}/{self.args.epochs}], Step: [{i}/{len(train_loader)}], Training loss: {loss.item()}, device: {self.devicename}"
@@ -409,16 +428,19 @@ class Adapter(object):
         with torch.no_grad():
             num_total, correct = 0, 0
             for sample in data_loader:
-                image = sample["image"].to(self.devicename)
+                # image = sample["image"].to(self.devicename)
                 label = sample["label"].to(self.devicename)
-                prompted_image = self.get_prompted_image(image, prompter=prompter) \
-                    if self.args.wo_da else self.get_prompted_image(image, self.prototype_gather, prompter_gather=prompter)
-                logits = self.model(prompted_image)
-                pred = torch.argmax(logits, dim=-1)
+                prompted_image = self.get_prompted_image_val(sample["image"].to(self.devicename), prompter=prompter) \
+                    if self.args.wo_da else self.get_prompted_image_val(sample, self.prototype_gather, prompter_gather=prompter)
+                # logits = self.model(prompted_image)
+                # pred = torch.argmax(logits, dim=-1)
+                pred = self.aggregation_strategy.get_prediction(
+                    prompted_image, self)
                 correct += (pred == label).sum().item()
-                num_total += image.size(0)
+                num_total += sample["image"].size(0)
             acc = float(correct / num_total)
-            logger.info(f"[Prompt {mode.capitalize()}] Epoch: {epoch}, {mode} acc: {acc}, device: {self.devicename}")
+            logger.info(
+                f"[Prompt {mode.capitalize()}] Epoch: {epoch}, {mode} acc: {acc}, device: {self.devicename}")
 
             if mode == 'validating' and best_acc is not None and acc > best_acc:
                 best_acc = acc
@@ -430,7 +452,6 @@ class Adapter(object):
 
     def make_validation(self, logger, val_loader, prompter, best_acc_val, epoch):
         return self.evaluate(logger, val_loader, prompter, 'validating', epoch, best_acc_val)
-
 
     def make_opt_and_bpr(self, train_loader_len, _prompter):
         if self.args.wo_da:
@@ -484,7 +505,7 @@ class Adapter(object):
         for epoch in range(self.args.epochs):
             # train
             self.training_part(logger, train_loader, best_prompter,
-                               optimizer, scheduler, epoch, prompt_here=False)
+                               optimizer, scheduler, epoch)
             # validate
             best_prompter = self.make_validation(
                 logger, val_loader, best_prompter, BEST_ACC_VAL, epoch)

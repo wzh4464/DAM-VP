@@ -17,6 +17,7 @@ from .file_io import PathManager
 # Show filename and line number in logs
 _FORMAT = "[%(levelname)s: %(filename)s: %(lineno)4d]: %(message)s"
 
+rank = os.environ.get("RANK", "N/A")
 
 def _suppress_print():
     """Suppresses printing from the current process."""
@@ -117,7 +118,7 @@ def setup_single_logging(name, output=""):
         datefmt="%m/%d %H:%M:%S",
     )
     formatter = _ColorfulFormatter(
-        colored("[%(asctime)s %(name)s]: ", "green") + "%(message)s",
+        colored(f"[%(asctime)s %(name)s {rank}]: ", "green") + "%(message)s",
         datefmt="%m/%d %H:%M:%S",
         root_name=name,
         abbrev_name=str(name),

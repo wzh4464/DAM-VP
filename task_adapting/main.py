@@ -32,7 +32,7 @@ def load_dataset(args):
     return [
         data_loader.construct_train_loader(args, args.test_dataset), # torch.utils.data.DataLoader
         data_loader.construct_val_loader(
-            args, args.test_dataset, batch_size=args.batch_size
+            args, args.test_dataset
         ),
         data_loader.construct_test_loader(args, args.test_dataset),
     ]
@@ -51,7 +51,7 @@ def main():
     model, cur_device = model_builder._construct_model(args)
 
     # initialize meta-learner
-    metalearner = Adapter(args, model, averageAggregation())
+    metalearner = Adapter(args, model, majorityAggregation())
     metalearner.model.to(cur_device)
 
     # start task adaption
