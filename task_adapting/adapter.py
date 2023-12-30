@@ -72,7 +72,7 @@ class Adapter(object):
         """Load the trained visual prompter.
         """
         prompter = prompters.__dict__[self.args.prompt_method](
-            self.args).to(self.devicename) # prompt_method: pad, fixed, random, default: prompter = padding(args)
+            self.args).to(self.devicename)  # prompt_method: pad, fixed, random, default: prompter = padding(args)
         if prompter_path is not None:
             checkpoint = torch.load(prompter_path)
             prompter.load_state_dict(checkpoint['state_dict'])
@@ -106,6 +106,31 @@ class Adapter(object):
         return output[:, indices]
 
     def get_prompted_image(self, image, prototype_gather=None, prompter=None, prompter_gather=None):
+        """Obtain the prompted batch images.
+        """
+        if self.args.wo_da:
+            assert prompter is not None
+            return prompter(image)
+        else:
+            assert prototype_gather is not None
+            assert prompter_gather is not None
+            with torch.no_grad():
+                rep_batch = self.model.forward_features(image)  # [N, emd_dim]
+                rep_batch_sum = (rep_batch**2).sum(dim=-1,
+                                                   keepdims=True)  # [N, 1]
+                prototype_gather_sum = (
+                    prototype_gather**2).sum(dim=-1, keepdims=True).T  # [1, M]
+                distance_matrix = torch.sqrt(
+                    rep_batch_sum + prototype_gather_sum - 2 * torch.mm(rep_batch, prototype_gather.T))  # [N, M]
+                indices = torch.argmin(distance_matrix, dim=-1)  # [B]
+
+            prompted_image = [
+                prompter_gather[indices[idx]](image[idx].unsqueeze(0))
+                for idx in range(rep_batch.size(0))
+            ]
+            return torch.cat(prompted_image, dim=0)
+
+    def get_prompted_image_val(self, image, prototype_gather=None, prompter=None, prompter_gather=None):
         """Obtain the prompted batch images with specified aggregation method."""
         if not self.args.wo_da:
             return self.get_prompted_image_w_da(
@@ -376,32 +401,14 @@ class Adapter(object):
             loss.backward()
             optimizer.step()
 
-            if (i + 1) % 1 == 0:
-                logger.info(
-                    f"[Prompt Finetuning] Epoch: [{epoch}/{self.args.epochs}], Step: [{i}/{len(train_loader)}], Training loss: {loss.item()}, device: {self.devicename}"
-                )
-
-    def make_test(self, logger, test_loader, epoch, best_prompter):
-        with torch.no_grad():
-            num_total, correct = 0, 0
-            for sample in test_loader:
-                image = sample["image"].to(self.devicename)
-                label = sample["label"].to(self.devicename)
-                prompted_image = self.get_prompted_image(image, prompter=best_prompter) \
-                    if self.args.wo_da else self.get_prompted_image(image, self.prototype_gather, prompter_gather=best_prompter)
-                logits = self.model(prompted_image)
-                pred = torch.argmax(logits, dim=-1)
-                correct += (pred == label).sum().item()
-                num_total += image.size(0)
-            acc_test = float(correct / num_total)
             logger.info(
-                f"[Prompt Testing] Epoch: {epoch}, Test acc: {acc_test}, device: {self.devicename}")
-        return acc_test
+                f"[Prompt Finetuning] Epoch: [{epoch}/{self.args.epochs}], Step: [{i}/{len(train_loader)}], Training loss: {loss.item()}, device: {self.devicename}"
+            )
 
-    def make_validation(self, logger, val_loader, prompter, BEST_ACC_VAL, epoch):
+    def evaluate(self, logger, data_loader, prompter, mode, epoch, best_acc=None):
         with torch.no_grad():
             num_total, correct = 0, 0
-            for sample in val_loader:
+            for sample in data_loader:
                 image = sample["image"].to(self.devicename)
                 label = sample["label"].to(self.devicename)
                 prompted_image = self.get_prompted_image(image, prompter=prompter) \
@@ -410,13 +417,20 @@ class Adapter(object):
                 pred = torch.argmax(logits, dim=-1)
                 correct += (pred == label).sum().item()
                 num_total += image.size(0)
-            acc_val = float(correct / num_total)
-            logger.info(
-                f"[Prompt Validating] Epoch: {epoch}, Val acc: {acc_val}, device: {self.devicename}")
-            if acc_val > BEST_ACC_VAL:
-                BEST_ACC_VAL = acc_val
-                best_prompter = deepcopy(prompter)
-        return best_prompter
+            acc = float(correct / num_total)
+            logger.info(f"[Prompt {mode.capitalize()}] Epoch: {epoch}, {mode} acc: {acc}, device: {self.devicename}")
+
+            if mode == 'validating' and best_acc is not None and acc > best_acc:
+                best_acc = acc
+                return deepcopy(prompter)
+            return acc
+
+    def make_test(self, logger, test_loader, epoch, best_prompter):
+        return self.evaluate(logger, test_loader, best_prompter, 'testing', epoch)
+
+    def make_validation(self, logger, val_loader, prompter, best_acc_val, epoch):
+        return self.evaluate(logger, val_loader, prompter, 'validating', epoch, best_acc_val)
+
 
     def make_opt_and_bpr(self, train_loader_len, _prompter):
         if self.args.wo_da:
