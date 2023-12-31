@@ -3,7 +3,7 @@ File: /aggregation.py
 Created Date: Friday, December 29th, 2023
 Author: Zihan
 -----
-Last Modified: Saturday, 30th December 2023 9:54:52 pm
+Last Modified: Sunday, 31st December 2023 10:31:06 am
 Modified By: the developer formerly known as Zihan at <wzh4464@gmail.com>
 -----
 HISTORY:
@@ -14,31 +14,36 @@ Date      		By   	Comments
 from abc import ABC, abstractmethod
 import torch
 
+import logging
 
 class AggregationStrategy(ABC):
     """
     Abstract base class for aggregation strategies.
 
     """
+    # @abstractmethod
+    # def get_prompted_images(self, sample, prototype_gather, prompter_gather, adapter):
+    #     """
+    #     Retrieves the prompted images based on the given representations, prototypes, image, and prompter.
+
+    #     Args:
+    #         rep_batch (torch.Tensor): Tensor of shape [N, D] representing the batch of representations.
+    #         prototype_gather (torch.Tensor): Tensor of shape [M, D] representing the gathered prototypes.
+    #         image (torch.Tensor): Tensor representing the input image.
+    #         prompter_gather (torch.Tensor): Tensor of shape [M, D] representing the gathered prompters.
+
+    #     Returns:
+    #         torch.Tensor: Tensor representing the prompted images.
+
+    #     """
+    #     pass
+
+    def __init__(self) -> None:
+        super().__init__()
+        self.logger = logging.getLogger(__name__)
+
     @abstractmethod
-    def get_prompted_images(self, sample, prototype_gather, prompter_gather, adapter):
-        """
-        Retrieves the prompted images based on the given representations, prototypes, image, and prompter.
-
-        Args:
-            rep_batch (torch.Tensor): Tensor of shape [N, D] representing the batch of representations.
-            prototype_gather (torch.Tensor): Tensor of shape [M, D] representing the gathered prototypes.
-            image (torch.Tensor): Tensor representing the input image.
-            prompter_gather (torch.Tensor): Tensor of shape [M, D] representing the gathered prompters.
-
-        Returns:
-            torch.Tensor: Tensor representing the prompted images.
-
-        """
-        pass
-
-    @abstractmethod
-    def get_prediction(self, prompted_images, adapter):
+    def get_prediction(self, sample, prompter, model, device, num_classes, rep2logit):
         """
         Retrieves the prediction based on the given prompted images, model, label, and loss function.
 
@@ -130,18 +135,19 @@ class nearestAggregation(AggregationStrategy):
         prompted_images = torch.cat(prompted_images, dim=0).to(adapter.devicename)
         return prompted_images
 
-    def get_prediction(self, prompted_images, adapter):
+    def get_prediction(self, sample, prompter, model, device, num_classes, rep2logit):
         """Nearest Neighbor 的 get_prediction
 
         @return loss: [1]
         """
+        prompted_images = self.get_prompted_images(sample, adapter.prototype_gather, adapter.prompter_gather, adapter)
         return torch.argmax(adapter.model(prompted_images))
 
 class averageAggregation(AggregationStrategy):
     def get_prompted_images(self, sample, prototype_gather, prompter_gather, adapter):
         # 具体实现 B 的 get_prompted_images
         return get_all_prototyped_prompted_images(sample, prototype_gather, prompter_gather, adapter)
-    def get_prediction(self, prompted_images, adapter):
+    def get_prediction(self, sample, prompter, model, device, num_classes, rep2logit):
         """Average Aggregation 的 get_prediction
 
         @return prediction: [B] (B is the batch size)
@@ -161,7 +167,7 @@ class majorityAggregation(AggregationStrategy):
         """
         return get_all_prototyped_prompted_images(sample, prototype_gather, prompter_gather, adapter)
     
-    def get_prediction(self, prompted_images, adapter):
+    def get_prediction(self, sample, prompter, model, device, num_classes, rep2logit):
         """Majority Voting 的 get_prediction
 
         @return prediction: [B] (B is the batch size)
@@ -171,13 +177,32 @@ class majorityAggregation(AggregationStrategy):
         # first dimension: batch
         # second dimension: prototype ind
         # other dimension: loss
-        print(torch.cuda.memory_allocated()) 
+        self.logger.info("Majority Voting")
+        # print(torch.cuda.memory_allocated()) 
+        self.logger.info(f"memory allocated: {str(torch.cuda.memory_allocated()/1024/1024)} MB")
         # counts [B, P]
-        counts = torch.zeros([prompted_images.shape[1], prompted_images.shape[0]]).to(adapter.devicename)
-        for i in range(prompted_images.shape[0]):
-            counts += adapter.model.forward_features(prompted_images[i])
+        # counts = torch.zeros([prompted_images.shape[1], prompted_images.shape[0]]).to(adapter.devicename)
+        # for i in range(prompted_images.shape[0]):
+        #     counts += adapter.model.forward_features(prompted_images[i])
         
-        return torch.argmax(counts, dim=-1)
+        # return torch.argmax(counts, dim=-1)
+
+        cluster_num = len(prompter)
+        counts = torch.zeros(sample["image"].shape[0], num_classes).to(device)
+        self.logger.info(f"counts.shape: {str(counts.shape)}")
+        image = sample["image"].to(device)
+        for i in range(cluster_num):
+            prompted_images = prompter[i](image)
+            output = model.forward_features(prompted_images)
+            logits = rep2logit(output, num_classes)
+            self.logger.info(f"logits.shape: {str(logits.shape)}")
+
+            counts += logits
+            del prompted_images
+        
+        prediction = torch.argmax(counts, dim=0)
+        self.logger.info(f"prediction.shape: {str(prediction.shape)}")
+        return prediction
 
 class gaussianAggregation(AggregationStrategy):
     def get_prompted_images(self, sample, prototype_gather, prompter_gather, adapter):

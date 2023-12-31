@@ -162,9 +162,9 @@ class Adapter(object):
             "moco-v3-b-1k": 18
         }
         hc = cluster.AgglomerativeClustering(
-            n_clusters=20,
+            n_clusters=None,
             linkage='average',
-            # distance_threshold=threshold_dict[self.args.pretrained_model]
+            distance_threshold=threshold_dict[self.args.pretrained_model]
         )
         with torch.no_grad():
             for i, sample in enumerate(train_loader):
@@ -349,7 +349,7 @@ class Adapter(object):
         """Get representation and cluster index of the image.
         """
         with torch.no_grad():
-            self.logger.info(f"image.shape: {image.shape}")
+            # self.logger.info(f"image.shape: {image.shape}")
             rep = self.model.forward_features(image)
             rep_sum = (rep**2).sum(dim=-1, keepdims=True)
             prototype_gather_sum = (
@@ -379,29 +379,67 @@ class Adapter(object):
         best_prompter, optimizer, scheduler = self.make_opt_and_bpr(
             train_loader_len, prompter)
 
-        for loader in test_data:
-            for data_item in loader:
-                image = data_item["image"].to(self.devicename)
-                # add an attribute "cluster" to data_item
-                _, data_item["cluster"] = self.get_rep_and_cluster(
-                    image, self.prototype_gather)
-                del image
+        # updated_data = []
+
+        # for loader in test_data:
+        #     updated_loader = []
+        #     for data_item in loader:
+        #         image = data_item["image"].to(self.devicename)
+        #         _, cluster = self.get_rep_and_cluster(
+        #             image, self.prototype_gather)
+        #         del image
+
+        self.cluster_mapping = {
+            "train_cluster_mapping" : self.create_cluster_mapping(test_data[0], self.args.batch_size),
+            "val_cluster_mapping" : self.create_cluster_mapping(test_data[1], self.args.batch_size),
+            "test_cluster_mapping" : self.create_cluster_mapping(test_data[2], self.args.batch_size)
+        }
 
         logger.info(f"Cluster time: {time.time() - begin_time_cluster}")
         # remove cache
         torch.cuda.empty_cache()
+        train_loader, val_loader, test_loader = test_data
+        logger.info(
+            f"type of val_loader: {type(val_loader)} in init_with_head")
 
-        return logger, test_data[0], test_data[1], test_data[2], best_prompter, optimizer, scheduler
+        return logger, train_loader, val_loader, test_loader, \
+            best_prompter, optimizer, scheduler
 
-    def get_prompted_image_train(self, sample, prompter_gather):
+    def compute_cluster_labels(self, dataset):
+        # 这个函数计算并返回整个数据集的cluster标签列表
+        self.logger.info("compute_cluster_labels")
+        cluster_labels = []
+        for data_item in dataset:
+            image = data_item["image"].to(self.devicename)
+            # 假设这个函数返回每个样本的cluster标签
+            _, cluster = self.get_rep_and_cluster(
+                image, self.prototype_gather)
+            cluster_labels.append(cluster)
+        self.logger.info(f"cluster_labels len: {len(cluster_labels)}")
+        self.logger.info(f"cluster_labels[0] type: {type(cluster_labels[0])}")
+        return cluster_labels
+
+    def create_cluster_mapping(self, dataset, batch_size):
+        cluster_labels = self.compute_cluster_labels(dataset)
+        cluster_mapping = {}
+
+        # 创建批次索引到cluster标签的映射
+        for i in range(0, len(cluster_labels), batch_size):
+            batch_indices = range(i, min(i + batch_size, len(cluster_labels)))
+            cluster_mapping[i // batch_size] = [cluster_labels[j]
+                                                for j in batch_indices]
+
+        return cluster_mapping
+
+    def get_prompted_image_train(self, batch_idx, sample, prompter_gather):
         """Obtain the prompted batch images.
         """
 
         with torch.no_grad():
             prompted_list = [
-                prompter_gather[data_item["cluster"][0]](
-                    data_item["image"].to(self.devicename).unsqueeze(0))
-                for data_item in sample
+                prompter_gather[self.cluster_mapping["train_cluster_mapping"][batch_idx][idx]](
+                    sample["image"][idx].unsqueeze(0))
+                for idx in range(self.args.batch_size)
             ]
 
         return torch.cat(prompted_list, dim=0)
@@ -412,7 +450,7 @@ class Adapter(object):
             global_step = len(train_loader) * epoch + i
             scheduler(global_step)
 
-            prompted_image = self.get_prompted_image_train(sample, prompter)
+            prompted_image = self.get_prompted_image_train(i, sample, prompter)
             logits = self.model(prompted_image)
             loss = self.loss_function(
                 logits, sample["label"].to(self.devicename))
@@ -430,12 +468,12 @@ class Adapter(object):
             for sample in data_loader:
                 # image = sample["image"].to(self.devicename)
                 label = sample["label"].to(self.devicename)
-                prompted_image = self.get_prompted_image_val(sample["image"].to(self.devicename), prompter=prompter) \
-                    if self.args.wo_da else self.get_prompted_image_val(sample, self.prototype_gather, prompter_gather=prompter)
-                # logits = self.model(prompted_image)
-                # pred = torch.argmax(logits, dim=-1)
+                logger.info(
+                    f"type of data_loader: {type(data_loader)} in evaluate")
                 pred = self.aggregation_strategy.get_prediction(
-                    prompted_image, self)
+                    sample, prompter, self.model, self.devicename, data_loader._dataset_class_num(
+                        self.args.test_dataset), self.rep2logit
+                )
                 correct += (pred == label).sum().item()
                 num_total += sample["image"].size(0)
             acc = float(correct / num_total)
@@ -451,6 +489,8 @@ class Adapter(object):
         return self.evaluate(logger, test_loader, best_prompter, 'testing', epoch)
 
     def make_validation(self, logger, val_loader, prompter, best_acc_val, epoch):
+        logger.info(
+            f"type of val_loader: {type(val_loader)} in make_validation")
         return self.evaluate(logger, val_loader, prompter, 'validating', epoch, best_acc_val)
 
     def make_opt_and_bpr(self, train_loader_len, _prompter):
