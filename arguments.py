@@ -129,7 +129,7 @@ class Arguments:
         seed: int, default: 2023, help: Random seed (default: 2023).
         gpu_ids: int, default: 0, help: Ids of GPUs to use.
         num_gpus: int, default: 0, help: Num of GPUs to use.
-        num_workers: int, default: 4, help: Worker nums of data loading.
+        num_workers: int, default: 3, help: Worker nums of data loading.
         pin_memory: bool, default: True, help: Pin CPU memory in DataLoader for more efficient (sometimes) transfer to GPU.
         distributed: bool, default: False, help: Whether to use the distributed mode.
         

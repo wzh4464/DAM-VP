@@ -389,10 +389,16 @@ class Adapter(object):
         #             image, self.prototype_gather)
         #         del image
 
+        # self.cluster_mapping = {
+        #     "train_cluster_mapping" : self.create_cluster_mapping(test_data[0], self.args.batch_size),
+        #     "val_cluster_mapping" : self.create_cluster_mapping(test_data[1], self.args.batch_size),
+        #     "test_cluster_mapping" : self.create_cluster_mapping(test_data[2], self.args.batch_size)
+        # }
+
         self.cluster_mapping = {
-            "train_cluster_mapping" : self.create_cluster_mapping(test_data[0], self.args.batch_size),
-            "val_cluster_mapping" : self.create_cluster_mapping(test_data[1], self.args.batch_size),
-            "test_cluster_mapping" : self.create_cluster_mapping(test_data[2], self.args.batch_size)
+            "train_cluster_mapping": self.compute_cluster_labels(test_data[0]),
+            "val_cluster_mapping": self.compute_cluster_labels(test_data[1]),
+            "test_cluster_mapping": self.compute_cluster_labels(test_data[2])
         }
 
         logger.info(f"Cluster time: {time.time() - begin_time_cluster}")
@@ -419,17 +425,17 @@ class Adapter(object):
         self.logger.info(f"cluster_labels[0] type: {type(cluster_labels[0])}")
         return cluster_labels
 
-    def create_cluster_mapping(self, dataset, batch_size):
-        cluster_labels = self.compute_cluster_labels(dataset)
-        cluster_mapping = {}
+    # def create_cluster_mapping(self, dataset, batch_size):
+    #     cluster_labels = self.compute_cluster_labels(dataset)
+    #     cluster_mapping = {}
 
-        # 创建批次索引到cluster标签的映射
-        for i in range(0, len(cluster_labels), batch_size):
-            batch_indices = range(i, min(i + batch_size, len(cluster_labels)))
-            cluster_mapping[i // batch_size] = [cluster_labels[j]
-                                                for j in batch_indices]
+    #     # 创建批次索引到cluster标签的映射
+    #     for i in range(0, len(cluster_labels), batch_size):
+    #         batch_indices = range(i, min(i + batch_size, len(cluster_labels)))
+    #         cluster_mapping[i // batch_size] = [cluster_labels[j]
+    #                                             for j in batch_indices]
 
-        return cluster_mapping
+    #     return cluster_mapping
 
     def get_prompted_image_train(self, batch_idx, sample, prompter_gather):
         """Obtain the prompted batch images.
@@ -438,8 +444,8 @@ class Adapter(object):
         with torch.no_grad():
             prompted_list = [
                 prompter_gather[self.cluster_mapping["train_cluster_mapping"][batch_idx][idx]](
-                    sample["image"][idx].unsqueeze(0))
-                for idx in range(self.args.batch_size)
+                    sample["image"][idx].unsqueeze(0).to(self.devicename))
+                for idx in range(self.local_batch_size)
             ]
 
         return torch.cat(prompted_list, dim=0)
@@ -471,8 +477,7 @@ class Adapter(object):
                 logger.info(
                     f"type of data_loader: {type(data_loader)} in evaluate")
                 pred = self.aggregation_strategy.get_prediction(
-                    sample, prompter, self.model, self.devicename, data_loader._dataset_class_num(
-                        self.args.test_dataset), self.rep2logit
+                    sample, prompter, self.model, self.devicename, len(data_loader.dataset.classes), self.rep2logit, self
                 )
                 correct += (pred == label).sum().item()
                 num_total += sample["image"].size(0)

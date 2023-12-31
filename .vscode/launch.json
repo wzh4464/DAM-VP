@@ -125,7 +125,7 @@
                 "--test_dataset",
                 "cifar10",
                 "--epochs",
-                "3",
+                "50",
                 "--lr",
                 "0.5",
                 "--weight_decay",
