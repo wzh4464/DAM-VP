@@ -381,15 +381,25 @@ class Adapter(object):
         #     "val_cluster_mapping" : self.create_cluster_mapping(test_data[1], self.args.batch_size),
         #     "test_cluster_mapping" : self.create_cluster_mapping(test_data[2], self.args.batch_size)
         # }
-
-        self.cluster_mapping = {
+        renew = False
+        # renew = True
+        self.cluster_mappings = {
             "train_cluster_mapping": ClusterAndRepList(
-                f"{self.args.output_dir}/train_cluster_mapping_{self.args.test_dataset}.pt", test_data[0], self),
+                f"{self.args.output_dir}/train_cluster_mapping_{self.args.test_dataset}.pt", test_data[0], self, renew=renew),
             "val_cluster_mapping": ClusterAndRepList(
-                f"{self.args.output_dir}/val_cluster_mapping_{self.args.test_dataset}.pt", test_data[1], self),
+                f"{self.args.output_dir}/val_cluster_mapping_{self.args.test_dataset}.pt", test_data[1], self, renew=renew),
             "test_cluster_mapping": ClusterAndRepList(
-                f"{self.args.output_dir}/test_cluster_mapping_{self.args.test_dataset}.pt", test_data[2], self)
+                f"{self.args.output_dir}/test_cluster_mapping_{self.args.test_dataset}.pt", test_data[2], self, renew=renew)
         }
+
+        self.cluster_list = {
+            "training": ProtoTypeList(
+               self.prototype_gather, self.cluster_mappings["train_cluster_mapping"]),
+            # "validating": ProtoTypeList(
+            #     self.prototype_gather, self.cluster_mappings["val_cluster_mapping"]),
+            # "testing": ProtoTypeList(
+            #     self.prototype_gather, self.cluster_mappings["test_cluster_mapping"])
+        } 
 
         logger.info(f"Cluster time: {time.time() - begin_time_cluster}")
         # remove cache
@@ -419,7 +429,7 @@ class Adapter(object):
     def get_prompted_image_train(self, batch_idx, sample, prompter_gather):
         """Obtain the prompted batch images using CUDA streams."""
 
-        clusters = self.cluster_mapping["train_cluster_mapping"][batch_idx].cluster
+        clusters = self.cluster_mappings["train_cluster_mapping"][batch_idx].cluster
         images = sample["image"].to(self.devicename)
 
         streams = [torch.cuda.Stream() for _ in range(len(images))]
@@ -464,6 +474,15 @@ class Adapter(object):
             logger.info(
                 f"[Prompt Finetuning] Epoch: [{epoch}/{self.args.epochs}], Step: [{i}/{len(train_loader)}], Training loss: {loss.item()}, device: {self.devicename}"
             )
+            # save the prompter
+            prompter_state_dicts = {f'prompter_{idx}': p.state_dict() for idx, p in enumerate(prompter)}
+            torch.save({
+                'epoch': epoch,
+                'prompter_state_dicts': prompter_state_dicts,
+                'optimizer': optimizer.state_dict(),
+                # 'scheduler': scheduler.state_dict(),
+            }, f"{self.args.output_dir}/prompter_{self.args.test_dataset}_{epoch}.pt")
+
 
     def evaluate(self, logger, data_loader, prompter, mode, epoch, best_acc=None):
         with torch.no_grad():
@@ -480,12 +499,12 @@ class Adapter(object):
                 if mode == 'validating':
                     pred = nearestAggregation().get_prediction(
                         sample, prompter, self.model, self.devicename, len(
-                            data_loader.dataset.classes), self.rep2logit, self
+                            data_loader.dataset.classes), self
                     )
                 elif mode == 'testing':
                     pred = self.aggregation_strategy.get_prediction(
                         sample, prompter, self.model, self.devicename, len(
-                            data_loader.dataset.classes), self.rep2logit, self
+                            data_loader.dataset.classes), self
                     )
                 else:
                     raise NotImplementedError
@@ -550,6 +569,7 @@ class Adapter(object):
 
         1. Split the cluster and train the prompter for each cluster.
         """
+
         logger, train_loader, val_loader, test_loader, best_prompter, optimizer, scheduler \
             = self.init_with_head(test_data, prompter_path)
 

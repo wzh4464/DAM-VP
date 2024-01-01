@@ -51,7 +51,7 @@ def main():
     model, cur_device = model_builder._construct_model(args)
 
     # initialize meta-learner
-    metalearner = Adapter(args, model, majorityAggregation())
+    metalearner = Adapter(args, model, gaussianAggregation())
     metalearner.model.to(cur_device)
 
     # start task adaption

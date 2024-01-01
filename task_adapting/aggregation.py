@@ -3,7 +3,7 @@ File: /aggregation.py
 Created Date: Friday, December 29th, 2023
 Author: Zihan
 -----
-Last Modified: Monday, 1st January 2024 4:54:08 pm
+Last Modified: Monday, 1st January 2024 8:13:32 pm
 Modified By: the developer formerly known as Zihan at <wzh4464@gmail.com>
 -----
 HISTORY:
@@ -44,7 +44,7 @@ class AggregationStrategy(ABC):
         self.logger = logging.getLogger(__name__)
 
     @abstractmethod
-    def get_prediction(self, sample, prompter, model, device, num_classes, rep2logit, adapter):
+    def get_prediction(self, sample, prompter, model, device, num_classes, adapter):
         """
         Retrieves the prediction based on the given prompted images, model, label, and loss function.
 
@@ -142,7 +142,7 @@ class nearestAggregation(AggregationStrategy):
             prompted_images, dim=0).to(adapter.devicename)
         return prompted_images
 
-    def get_prediction(self, sample, prompter, model, device, num_classes, rep2logit, adapter):
+    def get_prediction(self, sample, prompter, model, device, num_classes, adapter):
         """Nearest Neighbor 的 get_prediction
 
         @return loss: [1]
@@ -160,7 +160,7 @@ class averageAggregation(AggregationStrategy):
         """
         return get_all_prototyped_prompted_images(sample, prototype_gather, prompter_gather, adapter)
 
-    def get_prediction(self, sample, prompter, model, device, num_classes, rep2logit, adapter):
+    def get_prediction(self, sample, prompter, model, device, num_classes, adapter):
         """Average Fusion 的 get_prediction
 
         @return prediction: [B] (B is the batch size)
@@ -172,8 +172,8 @@ class averageAggregation(AggregationStrategy):
         image = sample["image"].to(device)
         for i in range(cluster_num):
             prompted_images = prompter[i](image)
-            output = model.forward_features(prompted_images)
-            logits = rep2logit(output, num_classes)
+            logits = model.forward(prompted_images)
+            # logits = rep2logit(output, num_classes)
 
             logits_sum += logits
             del prompted_images
@@ -192,7 +192,7 @@ class majorityAggregation(AggregationStrategy):
         """
         return get_all_prototyped_prompted_images(sample, prototype_gather, prompter_gather, adapter)
 
-    def get_prediction(self, sample, prompter, model, device, num_classes, rep2logit, adapter):
+    def get_prediction(self, sample, prompter, model, device, num_classes, adapter):
         """Majority Voting 的 get_prediction
 
         @return prediction: [B] (B is the batch size)
@@ -221,6 +221,38 @@ class majorityAggregation(AggregationStrategy):
 
 
 class gaussianAggregation(AggregationStrategy):
-    def get_prompted_images(self, sample, prototype_gather, prompter_gather, adapter):
-        # 具体实现 D 的 get_prompted_images
-        return get_all_prototyped_prompted_images(sample, prototype_gather, prompter_gather, adapter)
+    def get_prediction(self, sample, prompter, model, device, num_classes, adapter):
+        """Gaussian Aggregation 的 get_prediction
+
+        @return prediction: [B] (B is the batch size)
+        """
+        cluster_list = adapter.cluster_list["training"]
+        cluster_num = len(cluster_list)
+        counts = None
+        image = sample["image"].to(device)
+
+        for i in range(cluster_num):
+            prompted_images = prompter[i](image)
+            image_rep = model.forward_features(prompted_images)
+            logits = model(prompted_images)
+            # ! need to be modified
+
+            # 计算高斯权重
+            diff = image_rep - cluster_list[i].prototype.to(device)
+            if cluster_list[i].sigma is not torch.nan:
+                weights = torch.exp(-torch.sum(diff ** 2, dim=1) / (2 * torch.norm(cluster_list[i].sigma) ** 2))
+            else:
+                # give a warning
+                self.logger.warning("sigma is nan")
+
+
+            # 加权预测
+            # counts += weights.unsqueeze(1) * logits
+            if counts is None:
+                counts = weights.unsqueeze(1) * logits
+            else:
+                counts += weights.unsqueeze(1) * logits
+
+        # 得到最终预测
+        prediction = torch.argmax(counts, dim=1)
+        return prediction
