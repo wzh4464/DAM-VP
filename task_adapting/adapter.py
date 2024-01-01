@@ -22,7 +22,7 @@ import utils.logging as logging
 
 from arguments import Arguments
 from aggregation import AggregationStrategy, nearestAggregation
-from cluster_and_rep import ClusterAndRep, ClusterAndRepList
+from cluster_and_rep import ClusterAndRep, ClusterAndRepList, ProtoTypeList
 
 
 logger = logging.get_logger("dam-vp")
@@ -346,20 +346,6 @@ class Adapter(object):
             self.coarse_clustering(test_data)
         return logger, train_loader, val_loader, test_loader, prompter
 
-    def get_rep_and_cluster(self, image, prototype_gather):
-        """Get representation and cluster index of the image.
-        """
-        with torch.no_grad():
-            # self.logger.info(f"image.shape: {image.shape}")
-            rep = self.model.forward_features(image)
-            rep_sum = (rep**2).sum(dim=-1, keepdims=True)
-            prototype_gather_sum = (
-                prototype_gather**2).sum(dim=-1, keepdims=True).T
-            distance_matrix = torch.sqrt(
-                rep_sum + prototype_gather_sum - 2 * torch.mm(rep, prototype_gather.T))
-            cluster_idx = torch.argmin(distance_matrix, dim=-1)
-        return rep, cluster_idx
-
     def init_with_head(self, test_data, prompter_path):
         """define logger, train_loader, val_loader, test_loader, prompter and do coarse clustering.
         * test_data is prompted here
@@ -443,7 +429,8 @@ class Adapter(object):
             for cluster, image, stream in zip(clusters, images, streams):
                 with torch.cuda.stream(stream):
                     # 应用 prompter_gather 并将结果添加到列表
-                    prompted_image = prompter_gather[cluster](image.unsqueeze(0))
+                    prompted_image = prompter_gather[cluster](
+                        image.unsqueeze(0))
                     prompted_images.append(prompted_image)
 
         torch.cuda.synchronize()  # 确保所有流完成处理
@@ -521,7 +508,7 @@ class Adapter(object):
 
     def make_validation(self, logger, val_loader, prompter, best_acc_val, epoch):
         # logger.info(
-            # f"type of val_loader: {type(val_loader)} in make_validation")
+        # f"type of val_loader: {type(val_loader)} in make_validation")
         return self.evaluate(logger, val_loader, prompter, 'validating', epoch, best_acc_val)
 
     def make_opt_and_bpr(self, train_loader_len, _prompter):

@@ -3,7 +3,7 @@ File: /aggregation.py
 Created Date: Friday, December 29th, 2023
 Author: Zihan
 -----
-Last Modified: Monday, 1st January 2024 4:16:12 pm
+Last Modified: Monday, 1st January 2024 4:54:08 pm
 Modified By: the developer formerly known as Zihan at <wzh4464@gmail.com>
 -----
 HISTORY:
@@ -202,16 +202,6 @@ class majorityAggregation(AggregationStrategy):
         # first dimension: batch
         # second dimension: prototype ind
         # other dimension: loss
-        self.logger.info("Majority Voting")
-        # print(torch.cuda.memory_allocated())
-        # self.logger.info(
-        #     f"memory allocated: {str(torch.cuda.memory_allocated()/1024/1024)} MB")
-        # counts [B, P]
-        # counts = torch.zeros([prompted_images.shape[1], prompted_images.shape[0]]).to(adapter.devicename)
-        # for i in range(prompted_images.shape[0]):
-        #     counts += adapter.model.forward_features(prompted_images[i])
-
-        # return torch.argmax(counts, dim=-1)
 
         cluster_num = len(prompter)
         counts = None
