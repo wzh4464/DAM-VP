@@ -22,6 +22,7 @@ import utils.logging as logging
 
 from arguments import Arguments
 from aggregation import AggregationStrategy, nearestAggregation
+from cluster_and_rep import ClusterAndRep, ClusterAndRepList
 
 
 logger = logging.get_logger("dam-vp")
@@ -396,9 +397,12 @@ class Adapter(object):
         # }
 
         self.cluster_mapping = {
-            "train_cluster_mapping": self.compute_cluster_labels(test_data[0]),
-            "val_cluster_mapping": self.compute_cluster_labels(test_data[1]),
-            "test_cluster_mapping": self.compute_cluster_labels(test_data[2])
+            "train_cluster_mapping": ClusterAndRepList(
+                f"{self.args.output_dir}/train_cluster_mapping_{self.args.test_dataset}.pt", test_data[0], self),
+            "val_cluster_mapping": ClusterAndRepList(
+                f"{self.args.output_dir}/val_cluster_mapping_{self.args.test_dataset}.pt", test_data[1], self),
+            "test_cluster_mapping": ClusterAndRepList(
+                f"{self.args.output_dir}/test_cluster_mapping_{self.args.test_dataset}.pt", test_data[2], self)
         }
 
         logger.info(f"Cluster time: {time.time() - begin_time_cluster}")
@@ -414,41 +418,47 @@ class Adapter(object):
     def compute_cluster_labels(self, dataset):
         # 这个函数计算并返回整个数据集的cluster标签列表
         self.logger.info("compute_cluster_labels")
-        cluster_labels = []
-        for data_item in dataset:
-            image = data_item["image"].to(self.devicename)
-            # 假设这个函数返回每个样本的cluster标签
-            _, cluster = self.get_rep_and_cluster(
-                image, self.prototype_gather)
-            cluster_labels.append(cluster)
+        # cluster_labels = []
+        # for data_item in dataset:
+        #     cluster_labels.append(ClusterAndRep(data_item["image"].to(self.devicename), self))
+        cluster_labels = [
+            ClusterAndRep(data_item["image"].to(self.devicename), self)
+            for data_item in dataset
+        ]
+
         self.logger.info(f"cluster_labels len: {len(cluster_labels)}")
         self.logger.info(f"cluster_labels[0] type: {type(cluster_labels[0])}")
         return cluster_labels
 
-    # def create_cluster_mapping(self, dataset, batch_size):
-    #     cluster_labels = self.compute_cluster_labels(dataset)
-    #     cluster_mapping = {}
-
-    #     # 创建批次索引到cluster标签的映射
-    #     for i in range(0, len(cluster_labels), batch_size):
-    #         batch_indices = range(i, min(i + batch_size, len(cluster_labels)))
-    #         cluster_mapping[i // batch_size] = [cluster_labels[j]
-    #                                             for j in batch_indices]
-
-    #     return cluster_mapping
-
     def get_prompted_image_train(self, batch_idx, sample, prompter_gather):
-        """Obtain the prompted batch images.
-        """
+        """Obtain the prompted batch images using CUDA streams."""
+
+        clusters = self.cluster_mapping["train_cluster_mapping"][batch_idx].cluster
+        images = sample["image"].to(self.devicename)
+
+        streams = [torch.cuda.Stream() for _ in range(len(images))]
+        prompted_images = []
 
         with torch.no_grad():
-            prompted_list = [
-                prompter_gather[self.cluster_mapping["train_cluster_mapping"][batch_idx][idx]](
-                    sample["image"][idx].unsqueeze(0).to(self.devicename))
-                for idx in range(self.local_batch_size)
-            ]
+            for cluster, image, stream in zip(clusters, images, streams):
+                with torch.cuda.stream(stream):
+                    # 应用 prompter_gather 并将结果添加到列表
+                    prompted_image = prompter_gather[cluster](image.unsqueeze(0))
+                    prompted_images.append(prompted_image)
 
-        return torch.cat(prompted_list, dim=0)
+        torch.cuda.synchronize()  # 确保所有流完成处理
+
+        # 将所有处理后的图像合并成一个批次
+        return torch.cat(prompted_images, dim=0)
+
+        # with torch.no_grad():
+        #     prompted_list = [
+        #         prompter_gather[self.cluster_mapping["train_cluster_mapping"][batch_idx].cluster[idx]](
+        #             sample["image"][idx].unsqueeze(0).to(self.devicename))
+        #         for idx in range(self.local_batch_size)
+        #     ]
+
+        # return torch.cat(prompted_list, dim=0)
 
     def training_part(self, logger, train_loader, prompter, optimizer, scheduler, epoch):
         for i, sample in enumerate(train_loader):
@@ -471,19 +481,35 @@ class Adapter(object):
     def evaluate(self, logger, data_loader, prompter, mode, epoch, best_acc=None):
         with torch.no_grad():
             num_total, correct = 0, 0
-            for sample in data_loader:
+            begin_time = time.time()
+            for i, sample in enumerate(data_loader):
+                # sample is a dict
+                # add an attribute "epoch" to it as i
+                sample["epoch"] = i
                 # image = sample["image"].to(self.devicename)
                 label = sample["label"].to(self.devicename)
-                logger.info(
-                    f"type of data_loader: {type(data_loader)} in evaluate")
-                pred = self.aggregation_strategy.get_prediction(
-                    sample, prompter, self.model, self.devicename, len(data_loader.dataset.classes), self.rep2logit, self
-                )
+                # logger.info(
+                #     f"type of data_loader: {type(data_loader)} in evaluate")
+                if mode == 'validating':
+                    pred = nearestAggregation().get_prediction(
+                        sample, prompter, self.model, self.devicename, len(
+                            data_loader.dataset.classes), self.rep2logit, self
+                    )
+                elif mode == 'testing':
+                    pred = self.aggregation_strategy.get_prediction(
+                        sample, prompter, self.model, self.devicename, len(
+                            data_loader.dataset.classes), self.rep2logit, self
+                    )
+                else:
+                    raise NotImplementedError
                 correct += (pred == label).sum().item()
                 num_total += sample["image"].size(0)
             acc = float(correct / num_total)
             logger.info(
                 f"[Prompt {mode.capitalize()}] Epoch: {epoch}, {mode} acc: {acc}, device: {self.devicename}")
+            # time
+            logger.info(
+                f"Time consuming of {mode} (seconds): {time.time() - begin_time}")
 
             if mode == 'validating' and best_acc is not None and acc > best_acc:
                 best_acc = acc
@@ -494,8 +520,8 @@ class Adapter(object):
         return self.evaluate(logger, test_loader, best_prompter, 'testing', epoch)
 
     def make_validation(self, logger, val_loader, prompter, best_acc_val, epoch):
-        logger.info(
-            f"type of val_loader: {type(val_loader)} in make_validation")
+        # logger.info(
+            # f"type of val_loader: {type(val_loader)} in make_validation")
         return self.evaluate(logger, val_loader, prompter, 'validating', epoch, best_acc_val)
 
     def make_opt_and_bpr(self, train_loader_len, _prompter):

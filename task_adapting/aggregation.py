@@ -3,7 +3,7 @@ File: /aggregation.py
 Created Date: Friday, December 29th, 2023
 Author: Zihan
 -----
-Last Modified: Sunday, 31st December 2023 5:35:09 pm
+Last Modified: Monday, 1st January 2024 4:16:12 pm
 Modified By: the developer formerly known as Zihan at <wzh4464@gmail.com>
 -----
 HISTORY:
@@ -147,9 +147,9 @@ class nearestAggregation(AggregationStrategy):
 
         @return loss: [1]
         """
-        prompted_images = self.get_prompted_images(
-            sample, adapter.prototype_gather, adapter.prompter_gather, adapter)
-        return torch.argmax(adapter.model(prompted_images))
+        prompted_images = adapter.get_prompted_image_train(
+            sample["epoch"], sample, prompter)
+        return torch.argmax(adapter.model(prompted_images), dim=-1)
 
 
 class averageAggregation(AggregationStrategy):
