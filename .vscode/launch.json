@@ -113,7 +113,7 @@
                 "--master_port=1234",
                 "task_adapting/main.py",
                 "--output_dir",
-                "result/cifar10_my",
+                "result/cifar10_gaussian",
                 "--batch_size",
                 "96",
                 "--base_dir",
@@ -146,6 +146,8 @@
                 "MASTER_ADDR": "localhost",
                 "MASTER_PORT": "1234",
                 "WORLD_SIZE": "3",
+                "NCLL_BLOCKING_WAIT": "1",
+                "NCCL_TIMEOUT": "200000",
             }
         },
         {
