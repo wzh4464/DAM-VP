@@ -14,6 +14,7 @@ ROOT_DIR = BASE_DIR
 sys.path.append(os.path.join(ROOT_DIR, '../'))
 
 from models import prompters
+from models.builder import get_current_device
 import models.backbones.backbone_vit as bb
 from data_utils import loader as data_loader
 from utils.functional import set_seed
@@ -50,7 +51,7 @@ class Adapter(object):
 
         # destination to this gpu -- .to(self.devicename)
         self.devicename = torch.device(
-            f"cuda:{self.rank}" if torch.cuda.is_available() else "cpu")
+            f"cuda:{self.rank}" if torch.cuda.is_available() else get_current_device())
         self.logger.info(f"self.devicename: {self.devicename}")
 
         self.local_batch_size = args.batch_size // args.num_gpus
@@ -72,7 +73,7 @@ class Adapter(object):
         prompter = prompters.__dict__[self.args.prompt_method](
             self.args).to(self.devicename)  # prompt_method: pad, fixed, random, default: prompter = padding(args)
         if prompter_path is not None:
-            checkpoint = torch.load(prompter_path)
+            checkpoint = torch.load(prompter_path, map_location=self.devicename)
             prompter.load_state_dict(checkpoint['state_dict'])
             logger.info(
                 f"Loading meta-trained visual prompts from {prompter_path}")
@@ -432,18 +433,27 @@ class Adapter(object):
         clusters = self.cluster_mappings["train_cluster_mapping"][batch_idx].cluster
         images = sample["image"].to(self.devicename)
 
-        streams = [torch.cuda.Stream() for _ in range(len(images))]
-        prompted_images = []
+        # if streams is supported, use streams to accelerate
+        if torch.cuda.is_available():
+            streams = [torch.cuda.Stream() for _ in range(len(images))]
+            prompted_images = []
 
-        with torch.no_grad():
-            for cluster, image, stream in zip(clusters, images, streams):
-                with torch.cuda.stream(stream):
-                    # 应用 prompter_gather 并将结果添加到列表
-                    prompted_image = prompter_gather[cluster](
-                        image.unsqueeze(0))
-                    prompted_images.append(prompted_image)
+            with torch.no_grad():
+                for cluster, image, stream in zip(clusters, images, streams):
+                    with torch.cuda.stream(stream):
+                        # 应用 prompter_gather 并将结果添加到列表
+                        prompted_image = prompter_gather[cluster](
+                            image.unsqueeze(0))
+                        prompted_images.append(prompted_image)
 
-        torch.cuda.synchronize()  # 确保所有流完成处理
+            torch.cuda.synchronize()  # 确保所有流完成处理
+        else:
+            # 如果不支持流，则按照原始方式处理
+            with torch.no_grad():
+                prompted_images = [
+                    prompter_gather[cluster](image.unsqueeze(0))
+                    for cluster, image in zip(clusters, images)
+                ]
 
         # 将所有处理后的图像合并成一个批次
         return torch.cat(prompted_images, dim=0)

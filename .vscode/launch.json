@@ -1,21 +1,25 @@
 {
     "configurations": [
         {
-            "name": "Python: main",
+            "name": "Python: one gpu, mps",
             "type": "python",
             "request": "launch",
             "program": "${workspaceFolder}/task_adapting/main.py",
             "console": "integratedTerminal",
             "justMyCode": true,
             "args": [
+                "--output_dir",
+                "result/cifar10_gaussian",
+                "--batch_size",
+                "32",
                 "--base_dir",
                 "../dataset",
                 "--pretrained_model",
-                "vit-b-1k",
+                "vit-b-22k",
                 "--adapt_method",
-                "prompt_wo_head",
+                "prompt_w_head",
                 "--test_dataset",
-                "oxford-flowers",
+                "cifar10",
                 "--epochs",
                 "50",
                 "--lr",
@@ -23,15 +27,16 @@
                 "--weight_decay",
                 "1e-4",
                 "--checkpoint_dir",
-                "checkpoints/vit-b-1k-wo-head.pth",
+                "checkpoints/vit-b-22k-w-head.pth",
                 "--dataset",
-                "vtab-caltech101",
+                "cifar10",
                 "--num_gpus",
-                "3"
+                "1",
+                // "--num_workers",
+                // ""
             ],
             "env": {
-                "PYTHONPATH": "~/miniconda3/envs/dam_vp/bin/python",
-                "CUDA_VISIBLE_DEVICES": "0,1,2"
+                "PYTHONPATH": "/Volumes/Mac_Ext/mps_torch/bin/python",
             }
         },
         {
