@@ -3,7 +3,7 @@ File: /aggregation.py
 Created Date: Friday, December 29th, 2023
 Author: Zihan
 -----
-Last Modified: Monday, 1st January 2024 8:13:32 pm
+Last Modified: Wednesday, 3rd January 2024 9:52:49 am
 Modified By: the developer formerly known as Zihan at <wzh4464@gmail.com>
 -----
 HISTORY:
@@ -234,7 +234,7 @@ class gaussianAggregation(AggregationStrategy):
         for i in range(cluster_num):
             prompted_images = prompter[i](image)
             image_rep = model.forward_features(prompted_images)
-            logits = model(prompted_images)
+            logits = model.head(image_rep)
             # ! need to be modified
 
             # 计算高斯权重
@@ -244,6 +244,7 @@ class gaussianAggregation(AggregationStrategy):
             else:
                 # give a warning
                 self.logger.warning("sigma is nan")
+                continue
 
 
             # 加权预测
