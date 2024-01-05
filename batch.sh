@@ -3,7 +3,7 @@
  # Created Date: Saturday December 2nd 2023
  # Author: Zihan
  # -----
- # Last Modified: Friday, 5th January 2024 9:09:44 pm
+ # Last Modified: Friday, 5th January 2024 9:15:07 pm
  # Modified By: the developer formerly known as Zihan at <wzh4464@gmail.com>
  # -----
  # HISTORY:
@@ -26,12 +26,7 @@ output_dir="result/cifar10_gaussian_pth_saved_distributed"
 mkdir -p $output_dir
 
 # 运行分布式 Python 脚本
-/home/zihan/dataset/new_dam/bin/python -m torch.distributed.launch \
-    --nproc_per_node=3 \
-    --nnodes=1 \
-    --node_rank=0 \
-    --master_addr=localhost \
-    --master_port=1234 \
+/home/zihan/dataset/new_dam/bin/python -m torchrun \
     task_adapting/main.py \
     --output_dir $output_dir \
     --batch_size 96 \
