@@ -253,6 +253,44 @@
                 "MASTER_PORT": "1234",
                 "WORLD_SIZE": "3",
             }
+        },
+        {
+            "name": "Python: distributed cifar10 22k one gpu on fat",
+            "type": "python",
+            "request": "launch",
+            "console": "integratedTerminal",
+            "program": "${workspaceFolder}/task_adapting/main.py",
+            "justMyCode": true,
+            "args": [
+                "--output_dir",
+                "result/cifar10_22k_one_gpu",
+                "--batch_size",
+                "16",
+                "--base_dir",
+                "dataset",
+                "--pretrained_model",
+                "vit-b-22k",
+                "--adapt_method",
+                "prompt_w_head",
+                "--test_dataset",
+                "cifar100",
+                "--epochs",
+                "50",
+                "--lr",
+                "0.5",
+                "--weight_decay",
+                "1e-4",
+                "--checkpoint_dir",
+                "checkpoints/vit-b-22k-w-head.pth",
+                "--dataset",
+                "cifar10",
+                "--num_gpus",
+                "1",
+            ],
+            "env": {
+                "PYTHONPATH": "~/miniconda3/envs/new_dam/bin/python",
+                "CUDA_VISIBLE_DEVICES": "0",
+            }
         }
     ]
 }
