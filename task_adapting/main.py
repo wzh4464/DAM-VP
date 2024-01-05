@@ -87,9 +87,9 @@ def init() -> tuple[Namespace, list[DataLoader], Adapter, str]:
 
     # initialize meta-learner
     metalearner = Adapter(args, model, aggregation_strategy_list=[
-            averageAggregation(), 
-            majorityAggregation(), 
-            nearestAggregation(), 
+            # averageAggregation(), 
+            # majorityAggregation(), 
+            # nearestAggregation(), 
             gaussianAggregation()
             ]
         )

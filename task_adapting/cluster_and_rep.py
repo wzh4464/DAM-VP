@@ -3,7 +3,7 @@ File: /cluster_and_rep.py
 Created Date: Monday January 1st 2024
 Author: Zihan
 -----
-Last Modified: Friday, 5th January 2024 10:35:52 pm
+Last Modified: Friday, 5th January 2024 11:28:34 pm
 Modified By: the developer formerly known as Zihan at <wzh4464@gmail.com>
 -----
 HISTORY:
@@ -125,31 +125,6 @@ class ProtoType:
         self.sigma = 0
         self.update(cluster_and_rep_list)
 
-    # def update(self, cluster_and_rep_list: ClusterAndRepList):
-    #     """Update items and sigma.
-
-    #     Args:
-    #         cluster_and_rep_list (ClusterAndRepList): rep and cluster of each image in the dataset
-    #     """
-    #     for batch_index, cluster_and_rep_batch in enumerate(cluster_and_rep_list):
-    #         # 遍历批次中的每个元素
-    #         for index_in_batch, cluster in enumerate(cluster_and_rep_batch.cluster):
-    #             # 检查该元素是否属于当前聚类
-    #             if cluster.item() == self.label:
-    #                 self.items.append(
-    #                     {"batch_index": batch_index,
-    #                         "index_in_batch": index_in_batch}
-    #                 )
-
-    #     logging.info(
-    #         f"len(self.items): {len(self.items)} for label {self.label}")
-    #     if not self.items:
-    #         self.sigma = torch.nan
-    #     else:
-    #         self.sigma = torch.std(
-    #             torch.stack([cluster_and_rep_list[self.items[idx]["batch_index"]].rep for idx in range(len(self.items))]), dim=0) \
-    #             # [B, Rep_dim(768)]
-
     def update(self, cluster_and_rep_list: ClusterAndRepList):
         # 假设cluster_and_rep_list可以直接提供一个合并后的所有批次的cluster数据
         # [total_batches * batch_size]
@@ -160,15 +135,19 @@ class ProtoType:
         # 找到匹配self.label的索引
         matching_indices = (all_clusters == self.label).nonzero().squeeze()
 
-        if matching_indices.numel() == 0:
+        if matching_indices.numel() < 2:
+            # 如果匹配的数量小于2，则不计算标准差
             self.sigma = torch.nan
         else:
             # 取出匹配的rep数据
             matching_reps = all_reps[matching_indices]
             # 计算标准差
             self.sigma = torch.std(matching_reps, dim=0)
-        logging.info(
-            f"simga: {self.sigma} for label {self.label}")
+            assert self.sigma.shape == self.prototype.shape
+            logging.info(
+                f"number of matching indices: {matching_indices.numel()} for label {self.label}")
+            logging.info(
+                f"simga: {self.sigma.shape} for label {self.label}")
 
 
 # protypes[i] = ProtoType(prototype, label, cluster_and_rep_list : ClusterAndRepList)

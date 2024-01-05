@@ -435,7 +435,7 @@ class Adapter(object):
                             image.unsqueeze(0))
                         prompted_images.append(prompted_image)
 
-            torch.cuda.synchronize()  # 确保所有流完成处理
+                torch.cuda.synchronize()  # 确保所有流完成处理
         else:
             # 如果不支持流，则按照原始方式处理
             with torch.no_grad():
@@ -537,16 +537,22 @@ class Adapter(object):
         return acc
 
     def make_test(self, logger, test_loader, epoch, best_prompter) -> float:
+        logging.info("Testing")
         for strategy in self.aggregation_strategy_list:
             logger.info(f"Testing with {strategy.__class__.__name__}")
-            try:
-                self.aggregation_strategy = strategy
-                self.aggregation_strategy_name = strategy.__class__.__name__
-                acc_test = self.evaluate(
-                    logger, test_loader, best_prompter, 'testing', epoch)
-            except Exception as e:
-                logger.info(f"Exception: {e}")
-                continue
+            # try:
+            #     self.aggregation_strategy = strategy
+            #     self.aggregation_strategy_name = strategy.__class__.__name__
+            #     acc_test = self.evaluate(
+            #         logger, test_loader, best_prompter, 'testing', epoch)
+            # except Exception as e:
+            #     logger.info(f"Exception: {e}")
+            #     continue
+            self.aggregation_strategy = strategy
+            self.aggregation_strategy_name = strategy.__class__.__name__
+            acc_test = self.evaluate(
+                logger, test_loader, best_prompter, 'testing', epoch)
+        return acc_test
 
     def make_validation(self, logger, val_loader, prompter, best_prompter, best_acc_val, epoch) -> tuple[float, prompters.PadPrompter | prompters.FixedPatchPrompter | prompters.RandomPatchPrompter]:
         self.aggregation_strategy_name = "nearestAggregation"
@@ -611,21 +617,22 @@ class Adapter(object):
 
         # label with cluster result
         for epoch in range(self.args.epochs):
-            # train
-            skip = self.training_part(logger, train_loader, prompter_gather,
-                                      optimizer, scheduler, epoch)
+            # # train
+            # skip = self.training_part(logger, train_loader, prompter_gather,
+            #                           optimizer, scheduler, epoch)
 
-            if skip:
-                continue
+            # if skip:
+            #     continue
 
-            # validate
-            [BEST_ACC_VAL, best_prompter_gather] = self.make_validation(
-                logger, val_loader, prompter_gather, best_prompter_gather, BEST_ACC_VAL, epoch)
+            # # validate
+            # [BEST_ACC_VAL, best_prompter_gather] = self.make_validation(
+            #     logger, val_loader, prompter_gather, best_prompter_gather, BEST_ACC_VAL, epoch)
             # test
-            # epoch = self.args.epochs - 1
+            epoch = self.args.epochs - 1
             if epoch == self.args.epochs - 1:
                 acc_test = self.make_test(
                     logger, test_loader, epoch, best_prompter_gather)
+                break
         return acc_test
 
     def save_checkpoint(self, path, test_data, prompters_path):
