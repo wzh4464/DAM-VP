@@ -3,7 +3,7 @@ File: /aggregation.py
 Created Date: Friday, December 29th, 2023
 Author: Zihan
 -----
-Last Modified: Friday, 5th January 2024 11:34:14 pm
+Last Modified: Saturday, 6th January 2024 12:23:00 am
 Modified By: the developer formerly known as Zihan at <wzh4464@gmail.com>
 -----
 HISTORY:
@@ -247,29 +247,53 @@ class gaussianAggregation(AggregationStrategy):
             with torch.no_grad():
                 for i, stream in enumerate(streams):
                     with torch.cuda.stream(stream):
-
-                        if cluster_list[i].sigma is not torch.nan:
-                            prompted_images = prompter[i](image)
-                            image_rep = model.forward_features(prompted_images)
-                            logits = model.head(image_rep)
-
-                            # 计算高斯权重
-                            diff = image_rep - cluster_list[i].prototype
-                            # assert device correct
-                            assert diff.device == device
-                            weights = torch.exp(-torch.sum(diff ** 2, dim=1) / (2 * norms[i]))
-                        else:
+                        if cluster_list[i].sigma is torch.nan:
                             # give a warning
                             # self.logger.warning("sigma is nan")
                             continue
 
+                        prompted_images = prompter[i](image)
+                        image_rep = model.forward_features(prompted_images)
+                        logits = model.head(image_rep)
+
+                        # 计算高斯权重
+                        diff = image_rep - cluster_list[i].prototype
+                        # assert device correct
+                        assert diff.device == device
+                        weights = torch.exp(-torch.sum(diff ** 2, dim=1) / (2 * norms[i]))
                         # 加权预测
                         # counts += weights.unsqueeze(1) * logits
                         if counts is None:
                             counts = weights.unsqueeze(1) * logits
                         else:
                             counts.add_(weights.unsqueeze(1) * logits)
-            torch.cuda.synchronize()
+
+            for stream in streams:
+                stream.synchronize()
+        else:
+            # cpu
+            for i in range(len(cluster_list)):
+                if cluster_list[i].sigma is torch.nan:
+                    # give a warning
+                    # self.logger.warning("sigma is nan")
+                    continue
+
+                prompted_images = prompter[i](image)
+                image_rep = model.forward_features(prompted_images)
+                logits = model.head(image_rep)
+
+                # 计算高斯权重
+                diff = image_rep - cluster_list[i].prototype
+                # assert device correct
+                assert diff.device == device
+                weights = torch.exp(-torch.sum(diff ** 2, dim=1) / (2 * norms[i]))
+                # 加权预测
+                # counts += weights.unsqueeze(1) * logits
+                if counts is None:
+                    counts = weights.unsqueeze(1) * logits
+                else:
+                    counts.add_(weights.unsqueeze(1) * logits)
+
         # 得到最终预测
         prediction = torch.argmax(counts, dim=1)
         time_end.record()
