@@ -3,7 +3,7 @@ File: /cluster_and_rep.py
 Created Date: Monday January 1st 2024
 Author: Zihan
 -----
-Last Modified: Friday, 5th January 2024 5:54:31 pm
+Last Modified: Friday, 5th January 2024 8:20:41 pm
 Modified By: the developer formerly known as Zihan at <wzh4464@gmail.com>
 -----
 HISTORY:
@@ -59,7 +59,7 @@ class ClusterAndRep:
 
 class ClusterAndRepList:
     def __init__(self, path, dataset, adapter, renew=False):
-        if os.path.exists(path) and not renew:
+        if not renew and os.path.exists(f"{path}_devicename_{adapter.devicename}.pth"):
             self.cluster_and_rep_list = torch.load(
                 path, map_location=adapter.devicename)
         else:
