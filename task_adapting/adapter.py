@@ -396,6 +396,9 @@ class Adapter(object):
             "test_cluster_mapping": ClusterAndRepList(
                 f"{self.args.output_dir}/test_cluster_mapping_{self.args.test_dataset}", test_loader, self, renew=renew)
         }
+        # self.cluster_mappings["train_cluster_mapping"][0].cluster
+        # tensor([ 73,  10,  74,   9,  33,  29,  32,  76,   4,  25,  75,  73,  42, 209,
+        #         100,   2], device='cuda:0')
 
         self.cluster_list = {
             "training": ProtoTypeList(

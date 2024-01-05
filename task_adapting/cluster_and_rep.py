@@ -3,7 +3,7 @@ File: /cluster_and_rep.py
 Created Date: Monday January 1st 2024
 Author: Zihan
 -----
-Last Modified: Friday, 5th January 2024 8:53:48 pm
+Last Modified: Friday, 5th January 2024 10:35:52 pm
 Modified By: the developer formerly known as Zihan at <wzh4464@gmail.com>
 -----
 HISTORY:
@@ -39,26 +39,30 @@ class ClusterAndRep:
             cluster_idx = torch.argmin(distance_matrix, dim=-1)
         return rep.to(device), cluster_idx.to(device)
 
+    def __len__(self):
+        return len(self.cluster)
+
     def __getitem__(self, idx):
         # 确保idx在有效范围内
-        if idx < 0 or idx >= len(self.cluster):
+        if idx < 0 or idx >= self.__len__():
             raise IndexError("Index out of range")
         return self.ClusterAndRepItem(self.cluster[idx], self.rep[idx])
 
     def __iter__(self):
+        self.index = 0
         return self
 
     def __next__(self):
-        if self.index < len(self.cluster):
-            result = self[self.index]
-            self.index += 1
-            return result
-        else:
+        if self.index >= self.__len__():
             raise StopIteration
+        result = self[self.index]
+        self.index += 1
+        return result
 
 
 class ClusterAndRepList:
     def __init__(self, path, dataset, adapter, renew=False):
+        self.index = 0
         if not renew and os.path.exists(f"{path}_devicename_{adapter.devicename}.pth"):
             self.cluster_and_rep_list = torch.load(
                 f"{path}_devicename_{adapter.devicename}.pth")
@@ -80,6 +84,23 @@ class ClusterAndRepList:
 
     def __len__(self):
         return len(self.cluster_and_rep_list)
+
+    def __iter__(self):
+        self.index = 0
+        return self
+
+    def __next__(self):
+        if self.index >= self.__len__():
+            raise StopIteration
+        result = self[self.index]
+        self.index += 1
+        return result
+
+    def get_all_reps(self):
+        return torch.cat([cluster_and_rep.rep for cluster_and_rep in self.cluster_and_rep_list], dim=0)
+
+    def get_all_clusters(self):
+        return torch.cat([cluster_and_rep.cluster for cluster_and_rep in self.cluster_and_rep_list], dim=0)
 
 
 class ProtoType:
@@ -104,29 +125,50 @@ class ProtoType:
         self.sigma = 0
         self.update(cluster_and_rep_list)
 
+    # def update(self, cluster_and_rep_list: ClusterAndRepList):
+    #     """Update items and sigma.
+
+    #     Args:
+    #         cluster_and_rep_list (ClusterAndRepList): rep and cluster of each image in the dataset
+    #     """
+    #     for batch_index, cluster_and_rep_batch in enumerate(cluster_and_rep_list):
+    #         # 遍历批次中的每个元素
+    #         for index_in_batch, cluster in enumerate(cluster_and_rep_batch.cluster):
+    #             # 检查该元素是否属于当前聚类
+    #             if cluster.item() == self.label:
+    #                 self.items.append(
+    #                     {"batch_index": batch_index,
+    #                         "index_in_batch": index_in_batch}
+    #                 )
+
+    #     logging.info(
+    #         f"len(self.items): {len(self.items)} for label {self.label}")
+    #     if not self.items:
+    #         self.sigma = torch.nan
+    #     else:
+    #         self.sigma = torch.std(
+    #             torch.stack([cluster_and_rep_list[self.items[idx]["batch_index"]].rep for idx in range(len(self.items))]), dim=0) \
+    #             # [B, Rep_dim(768)]
+
     def update(self, cluster_and_rep_list: ClusterAndRepList):
-        """Update items and sigma.
+        # 假设cluster_and_rep_list可以直接提供一个合并后的所有批次的cluster数据
+        # [total_batches * batch_size]
+        all_clusters = cluster_and_rep_list.get_all_clusters()
+        # [total_batches * batch_size, rep_dim]
+        all_reps = cluster_and_rep_list.get_all_reps()
 
-        Args:
-            cluster_and_rep_list (ClusterAndRepList): rep and cluster of each image in the dataset
-        """
-        self.items = []
-        for batch_index, cluster_and_rep_batch in enumerate(cluster_and_rep_list):
-            # cluster_and_rep is a batch
-            self.items.extend(
-                {"batch_index": batch_index, "index_in_batch": index_in_batch}
-                for index_in_batch, cluster_and_rep in enumerate(cluster_and_rep_batch)
-                if cluster_and_rep.cluster == self.label
-            )
+        # 找到匹配self.label的索引
+        matching_indices = (all_clusters == self.label).nonzero().squeeze()
 
-        logging.info(
-            f"len(self.items): {len(self.items)} for label {self.label}")
-        if not self.items:
+        if matching_indices.numel() == 0:
             self.sigma = torch.nan
         else:
-            self.sigma = torch.std(
-                torch.stack([cluster_and_rep_list[self.items[idx]["batch_index"]].rep for idx in range(len(self.items))]), dim=0) \
-                # [B, Rep_dim(768)]
+            # 取出匹配的rep数据
+            matching_reps = all_reps[matching_indices]
+            # 计算标准差
+            self.sigma = torch.std(matching_reps, dim=0)
+        logging.info(
+            f"simga: {self.sigma} for label {self.label}")
 
 
 # protypes[i] = ProtoType(prototype, label, cluster_and_rep_list : ClusterAndRepList)
