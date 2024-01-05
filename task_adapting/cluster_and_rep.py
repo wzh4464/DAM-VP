@@ -3,7 +3,7 @@ File: /cluster_and_rep.py
 Created Date: Monday January 1st 2024
 Author: Zihan
 -----
-Last Modified: Friday, 5th January 2024 8:20:41 pm
+Last Modified: Friday, 5th January 2024 8:53:48 pm
 Modified By: the developer formerly known as Zihan at <wzh4464@gmail.com>
 -----
 HISTORY:
@@ -61,7 +61,7 @@ class ClusterAndRepList:
     def __init__(self, path, dataset, adapter, renew=False):
         if not renew and os.path.exists(f"{path}_devicename_{adapter.devicename}.pth"):
             self.cluster_and_rep_list = torch.load(
-                path, map_location=adapter.devicename)
+                f"{path}_devicename_{adapter.devicename}.pth")
         else:
             self.cluster_and_rep_list = [
                 ClusterAndRep(data_item["image"].to(

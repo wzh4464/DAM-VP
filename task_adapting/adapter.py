@@ -350,9 +350,9 @@ class Adapter(object):
         return logger, train_loader, val_loader, test_loader, prompter
 
     def init_with_head(self, test_data: List[DataLoader], prompter_path: str) \
-        -> tuple[logging.Logger, DataLoader, DataLoader, DataLoader, \
-            prompters.PadPrompter | prompters.FixedPatchPrompter | prompters.RandomPatchPrompter, \
-            torch.optim.SGD, cosine_lr]:
+        -> tuple[logging.Logger, DataLoader, DataLoader, DataLoader,
+                 prompters.PadPrompter | prompters.FixedPatchPrompter | prompters.RandomPatchPrompter,
+                 torch.optim.SGD, cosine_lr]:
         """define logger, train_loader, val_loader, test_loader, prompter and do coarse clustering.
         * test_data is prompted here
         """
@@ -387,7 +387,7 @@ class Adapter(object):
             train_loader_len, prompter)
 
         renew = False
-        renew = True
+        # renew = True
         self.cluster_mappings: dict[str, ClusterAndRepList] = {
             "train_cluster_mapping": ClusterAndRepList(
                 f"{self.args.output_dir}/train_cluster_mapping_{self.args.test_dataset}", train_loader, self, renew=renew),
@@ -444,12 +444,36 @@ class Adapter(object):
         # 将所有处理后的图像合并成一个批次
         return torch.cat(prompted_images, dim=0)
 
-    def training_part(self, logger, train_loader, prompter, optimizer, scheduler, epoch):
+    def training_part(self, logger, train_loader, prompter, optimizer, scheduler, epoch, renew: bool = False) -> bool:
         for i, sample in enumerate(train_loader):
             # adjust learning rate
             global_step = len(train_loader) * epoch + i
             scheduler(global_step)
 
+            path = f"{self.args.output_dir}/prompter_{self.args.test_dataset}_epoch_{epoch}_device_{self.devicename}.pth"
+
+            if not renew and os.path.exists(path):
+                if os.path.exists(f"{self.args.output_dir}/prompter_{self.args.test_dataset}_epoch_{epoch+1}_device_{self.devicename}.pth"):
+                    logger.info(f"Skipping epoch {epoch}...")
+                else:
+                    checkpoint = torch.load(
+                        path, map_location=self.devicename)
+                    # load the prompter (List nn.Module)
+                    prompter_state_dicts = checkpoint['prompter_state_dicts']
+
+                    prompter = [prompters.__dict__[self.args.prompt_method](
+                        self.args).to(self.devicename) for _ in range(self.num_coarse_classes)]
+
+                    for idx, p in enumerate(prompter):
+                        p.load_state_dict(
+                            prompter_state_dicts[f'prompter_{idx}'])
+
+                    optimizer.load_state_dict(checkpoint['optimizer'])
+
+                    logger.info(
+                        f"Loading meta-trained visual prompts from {path}")
+
+                return True
             prompted_image = self.get_prompted_image_train(i, sample, prompter)
             logits = self.model(prompted_image)
             loss = self.loss_function(
@@ -461,49 +485,53 @@ class Adapter(object):
             logger.info(
                 f"[Prompt Finetuning] Epoch: [{epoch}/{self.args.epochs}], Step: [{i}/{len(train_loader)}], Training loss: {loss.item()}, device: {self.devicename}"
             )
-            # save the prompter
-            prompter_state_dicts = {
-                f'prompter_{idx}': p.state_dict() for idx, p in enumerate(prompter)}
-            torch.save({
-                'epoch': epoch,
-                'prompter_state_dicts': prompter_state_dicts,
-                'optimizer': optimizer.state_dict(),
-                # 'scheduler': scheduler.state_dict(),
-            }, f"{self.args.output_dir}/prompter_{self.args.test_dataset}_epoch_{epoch}_device_{self.devicename}.pth")
 
-    def evaluate(self, logger:logging.Logger, data_loader: DataLoader, prompter: list[
-                    prompters.PadPrompter | prompters.FixedPatchPrompter | prompters.RandomPatchPrompter], mode: str, epoch: int) -> float:
-            num_total, correct = 0, 0
-            begin_time = time.time()
-            for i, sample in enumerate(data_loader):
-                # sample is a dict
-                # add an attribute "epoch" to it as i
-                sample["epoch"] = i
-                # image = sample["image"].to(self.devicename)
-                label = sample["label"].to(self.devicename)
-                # logger.info(
-                #     f"type of data_loader: {type(data_loader)} in evaluate")
-                if mode == 'validating':
-                    pred = nearestAggregation().get_prediction(
-                        sample, prompter, self.model, self.devicename, len(
-                            data_loader.dataset.classes), self
-                    )
-                elif mode == 'testing':
-                    pred = self.aggregation_strategy.get_prediction(
-                        sample, prompter, self.model, self.devicename, len(
-                            data_loader.dataset.classes), self
-                    )
-                else:
-                    raise NotImplementedError
-                correct += (pred == label).sum().item()
-                num_total += sample["image"].size(0)
-            acc = float(correct / num_total)
-            logger.info(
-                f"[Prompt {mode.capitalize()}] Epoch: {epoch}, {mode} acc: {acc}, device: {self.devicename}")
-            # time
-            logger.info(
-                f"Time consuming of {mode} (seconds): {time.time() - begin_time} for {self.aggregation_strategy_name}")
-            return acc
+        logger.info(f"[Prompt Finetuning] Epoch: {epoch} finished.")
+        # save the prompter
+        prompter_state_dicts = {
+            f'prompter_{idx}': p.state_dict() for idx, p in enumerate(prompter)}
+        torch.save({
+            'epoch': epoch,
+            'prompter_state_dicts': prompter_state_dicts,
+            'optimizer': optimizer.state_dict(),
+            # 'scheduler': scheduler.state_dict(),
+        }, path)
+
+        return False
+
+    def evaluate(self, logger: logging.Logger, data_loader: DataLoader, prompter: list[
+            prompters.PadPrompter | prompters.FixedPatchPrompter | prompters.RandomPatchPrompter], mode: str, epoch: int) -> float:
+        num_total, correct = 0, 0
+        begin_time = time.time()
+        for i, sample in enumerate(data_loader):
+            # sample is a dict
+            # add an attribute "epoch" to it as i
+            sample["epoch"] = i
+            # image = sample["image"].to(self.devicename)
+            label = sample["label"].to(self.devicename)
+            # logger.info(
+            #     f"type of data_loader: {type(data_loader)} in evaluate")
+            if mode == 'validating':
+                pred = nearestAggregation().get_prediction(
+                    sample, prompter, self.model, self.devicename, len(
+                        data_loader.dataset.classes), self
+                )
+            elif mode == 'testing':
+                pred = self.aggregation_strategy.get_prediction(
+                    sample, prompter, self.model, self.devicename, len(
+                        data_loader.dataset.classes), self
+                )
+            else:
+                raise NotImplementedError
+            correct += (pred == label).sum().item()
+            num_total += sample["image"].size(0)
+        acc = float(correct / num_total)
+        logger.info(
+            f"[Prompt {mode.capitalize()}] Epoch: {epoch}, {mode} acc: {acc}, device: {self.devicename}")
+        # time
+        logger.info(
+            f"Time consuming of {mode} (seconds): {time.time() - begin_time} for {self.aggregation_strategy_name}")
+        return acc
 
     def make_test(self, logger, test_loader, epoch, best_prompter) -> float:
         for strategy in self.aggregation_strategy_list:
@@ -519,7 +547,8 @@ class Adapter(object):
 
     def make_validation(self, logger, val_loader, prompter, best_prompter, best_acc_val, epoch) -> tuple[float, prompters.PadPrompter | prompters.FixedPatchPrompter | prompters.RandomPatchPrompter]:
         self.aggregation_strategy_name = "nearestAggregation"
-        acc_val = self.evaluate(logger, val_loader, prompter, 'validating', epoch)
+        acc_val = self.evaluate(
+            logger, val_loader, prompter, 'validating', epoch)
         if acc_val > best_acc_val:
             best_acc_val = acc_val
             best_prompter = deepcopy(prompter)
@@ -568,7 +597,8 @@ class Adapter(object):
         logger, train_loader, val_loader, test_loader, best_prompter_gather, optimizer, scheduler \
             = self.init_with_head(test_data, prompter_path)
 
-        prompter_gather : List[prompters.PadPrompter | prompters.FixedPatchPrompter | prompters.RandomPatchPrompter] = best_prompter_gather[:]
+        prompter_gather: List[prompters.PadPrompter | prompters.FixedPatchPrompter |
+                              prompters.RandomPatchPrompter] = best_prompter_gather[:]
 
         self.model.get_classifier().train()
         BEST_ACC_VAL = -np.inf
@@ -579,8 +609,12 @@ class Adapter(object):
         # label with cluster result
         for epoch in range(self.args.epochs):
             # train
-            self.training_part(logger, train_loader, prompter_gather,
-                               optimizer, scheduler, epoch)
+            skip = self.training_part(logger, train_loader, prompter_gather,
+                                      optimizer, scheduler, epoch)
+
+            if skip:
+                continue
+
             # validate
             [BEST_ACC_VAL, best_prompter_gather] = self.make_validation(
                 logger, val_loader, prompter_gather, best_prompter_gather, BEST_ACC_VAL, epoch)
