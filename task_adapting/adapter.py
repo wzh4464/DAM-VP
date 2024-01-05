@@ -2,7 +2,7 @@ from argparse import Namespace
 import os
 import sys
 import time
-from typing import Any, List
+from typing import List
 import numpy as np
 from copy import deepcopy
 import logging
@@ -11,7 +11,7 @@ import torch
 import torch.nn as nn
 import torch.distributed as dist
 from torch.utils.data import DataLoader
-import sklearn.cluster as cluster
+import sklearn.cluster as clusterAgg
 
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 ROOT_DIR = BASE_DIR
@@ -27,7 +27,7 @@ import utils.logging as logGing
 
 from arguments import Arguments
 from aggregation import AggregationStrategy, nearestAggregation
-from cluster_and_rep import ClusterAndRep, ClusterAndRepList, ProtoTypeList
+from cluster_and_rep import ClusterAndRepList, ProtoTypeList
 
 
 logger = logGing.get_logger("dam-vp")
@@ -164,8 +164,8 @@ class Adapter(object):
                 "swin-b-22k": 20,
                 "moco-v3-b-1k": 18
             }
-        hc: cluster.AgglomerativeClustering = \
-            cluster.AgglomerativeClustering(
+        hc: clusterAgg.AgglomerativeClustering = \
+            clusterAgg.AgglomerativeClustering(
                 n_clusters=None,
                 linkage='average',
                 distance_threshold=threshold_dict[self.args.pretrained_model]
@@ -514,15 +514,22 @@ class Adapter(object):
             label = sample["label"].to(self.devicename)
             # logger.info(
             #     f"type of data_loader: {type(data_loader)} in evaluate")
-            if mode == 'validating':
-                pred = nearestAggregation().get_prediction(
+            if mode == 'testing':
+                testingAggregator = self.aggregation_strategy
+                testingAggregator.update(
+                    prompter, self.model, self.devicename, self
+                )
+                pred = testingAggregator.get_prediction(
                     sample, prompter, self.model, self.devicename, len(
                         data_loader.dataset.classes), self
                 )
-            elif mode == 'testing':
-                pred = self.aggregation_strategy.get_prediction(
-                    sample, prompter, self.model, self.devicename, len(
-                        data_loader.dataset.classes), self
+            elif mode == 'validating':
+                validationAggregator = nearestAggregation()
+                validationAggregator.update(
+                    prompter, self.model, self.devicename, self
+                )
+                pred = validationAggregator.get_prediction(
+                    sample, len(data_loader.dataset.classes)
                 )
             else:
                 raise NotImplementedError
@@ -540,14 +547,6 @@ class Adapter(object):
         logging.info("Testing")
         for strategy in self.aggregation_strategy_list:
             logger.info(f"Testing with {strategy.__class__.__name__}")
-            # try:
-            #     self.aggregation_strategy = strategy
-            #     self.aggregation_strategy_name = strategy.__class__.__name__
-            #     acc_test = self.evaluate(
-            #         logger, test_loader, best_prompter, 'testing', epoch)
-            # except Exception as e:
-            #     logger.info(f"Exception: {e}")
-            #     continue
             self.aggregation_strategy = strategy
             self.aggregation_strategy_name = strategy.__class__.__name__
             acc_test = self.evaluate(

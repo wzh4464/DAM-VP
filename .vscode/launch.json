@@ -255,7 +255,7 @@
             }
         },
         {
-            "name": "Python: distributed cifar10 22k one gpu on fat",
+            "name": "Python: cifar10 22k one gpu on fat",
             "type": "python",
             "request": "launch",
             "console": "integratedTerminal",

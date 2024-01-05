@@ -3,7 +3,7 @@ File: /aggregation.py
 Created Date: Friday, December 29th, 2023
 Author: Zihan
 -----
-Last Modified: Saturday, 6th January 2024 12:23:00 am
+Last Modified: Saturday, 6th January 2024 1:37:45 am
 Modified By: the developer formerly known as Zihan at <wzh4464@gmail.com>
 -----
 HISTORY:
@@ -13,8 +13,6 @@ Date      		By   	Comments
 
 from abc import ABC, abstractmethod
 import torch
-# stream
-from torch.cuda import Stream
 
 import logging
 
@@ -46,7 +44,11 @@ class AggregationStrategy(ABC):
         self.logger = logging.getLogger(__name__)
 
     @abstractmethod
-    def get_prediction(self, sample, prompter, model, device, num_classes, adapter):
+    def update(self, prompter, model, device, adapter):
+        pass
+
+    @abstractmethod
+    def get_prediction(self, sample, num_classes):
         """
         Retrieves the prediction based on the given prompted images, model, label, and loss function.
 
@@ -86,219 +88,195 @@ def calculate_distance_matrix(rep_batch, prototype_gather):
     )
 
 
-def get_all_prototyped_prompted_images(sample, prototype_gather, prompter_gather, adapter):
-    """Gets all prompted images for each prototype.
+# def get_all_prototyped_prompted_images(sample, prototype_gather, prompter_gather, adapter):
+#     """Gets all prompted images for each prototype.
 
-    @return prompted_images: [P, B, C, H, W], P is the number of prototypes
-    """
-    # get all prompted images for each image
-    # prompted_images
-    # first dimension: prototype ind
-    # second dimension: batch
-    # other dimension: image
-    batch_size = adapter.local_batch_size
-    logger = adapter.logger
-    # logger out: batch_size
-    logger.info(f"batch_size: {str(batch_size)}")
-    logger.info(f"rank: {str(adapter.rank)}")
-    logger.info(f"local_batch_size: {str(adapter.local_batch_size)}")
-    image = sample["image"].to(adapter.devicename)
+#     @return prompted_images: [P, B, C, H, W], P is the number of prototypes
+#     """
+#     # get all prompted images for each image
+#     # prompted_images
+#     # first dimension: prototype ind
+#     # second dimension: batch
+#     # other dimension: image
+#     batch_size = adapter.local_batch_size
+#     logger = adapter.logger
+#     # logger out: batch_size
+#     logger.info(f"batch_size: {str(batch_size)}")
+#     logger.info(f"rank: {str(adapter.rank)}")
+#     logger.info(f"local_batch_size: {str(adapter.local_batch_size)}")
+#     image = sample["image"].to(adapter.devicename)
 
-    for i in range(prototype_gather.shape[0]):
-        prompted_images = [
-            prompter_gather[i](image[idx].unsqueeze(0))
-            for idx in range(batch_size)
-        ]
-        prompted_images = torch.cat(
-            prompted_images, dim=0).to(adapter.devicename)
-        if i == 0:
-            prompted_images_all = prompted_images.unsqueeze(0)
-        else:
-            prompted_images_all = torch.cat(
-                [prompted_images_all, prompted_images.unsqueeze(0)], dim=0)
+#     for i in range(prototype_gather.shape[0]):
+#         prompted_images = [
+#             prompter_gather[i](image[idx].unsqueeze(0))
+#             for idx in range(batch_size)
+#         ]
+#         prompted_images = torch.cat(
+#             prompted_images, dim=0).to(adapter.devicename)
+#         if i == 0:
+#             prompted_images_all = prompted_images.unsqueeze(0)
+#         else:
+#             prompted_images_all = torch.cat(
+#                 [prompted_images_all, prompted_images.unsqueeze(0)], dim=0)
 
-    logger.info(f"prompted_images_all.shape: {str(prompted_images_all.shape)}")
-    return prompted_images_all
-
-
-class nearestAggregation(AggregationStrategy):
-    def get_prompted_images(self, sample, prototype_gather, prompter_gather, adapter):
-        # 具体实现 A 的 get_prompted_images
-        """Nearest Neighbor.
-
-        @return prompted_images: [B, C, H, W]
-        """
-        # rep_batch = sample["rep_batch"].to(adapter.devicename)
-        # image = sample["image"].to(adapter.devicename)
-        # distance_matrix = calculate_distance_matrix(
-        #     rep_batch, prototype_gather)
-        # indices = torch.argmin(distance_matrix, dim=-1)  # [B]
-        batch_size = adapter.local_batch_size
-        prompted_images = [
-            # prompter_gather[indices[idx]](image[idx].unsqueeze(0))
-            prompter_gather[sample["prototype_indices"][idx]](
-                sample["image"][idx].unsqueeze(0))
-            for idx in range(batch_size)
-        ]
-        prompted_images = torch.cat(
-            prompted_images, dim=0).to(adapter.devicename)
-        return prompted_images
-
-    def get_prediction(self, sample, prompter, model, device, num_classes, adapter):
-        """Nearest Neighbor 的 get_prediction
-
-        @return loss: [1]
-        """
-        prompted_images = adapter.get_prompted_image_train(
-            sample["epoch"], sample, prompter)
-        return torch.argmax(adapter.model(prompted_images), dim=-1)
+#     logger.info(f"prompted_images_all.shape: {str(prompted_images_all.shape)}")
+#     return prompted_images_all
 
 
-class averageAggregation(AggregationStrategy):
-    def get_prompted_images(self, sample, prototype_gather, prompter_gather, adapter):
-        """Average Fusion 的 get_prompted_images
+# class nearestAggregation(AggregationStrategy):
+#     def get_prompted_images(self, sample, prototype_gather, prompter_gather, adapter):
+#         # 具体实现 A 的 get_prompted_images
+#         """Nearest Neighbor.
 
-        @return prompted_images: [B, P, C, H, W], P is the number of prototypes
-        """
-        return get_all_prototyped_prompted_images(sample, prototype_gather, prompter_gather, adapter)
+#         @return prompted_images: [B, C, H, W]
+#         """
+#         # rep_batch = sample["rep_batch"].to(adapter.devicename)
+#         # image = sample["image"].to(adapter.devicename)
+#         # distance_matrix = calculate_distance_matrix(
+#         #     rep_batch, prototype_gather)
+#         # indices = torch.argmin(distance_matrix, dim=-1)  # [B]
+#         batch_size = adapter.local_batch_size
+#         prompted_images = [
+#             # prompter_gather[indices[idx]](image[idx].unsqueeze(0))
+#             prompter_gather[sample["prototype_indices"][idx]](
+#                 sample["image"][idx].unsqueeze(0))
+#             for idx in range(batch_size)
+#         ]
+#         prompted_images = torch.cat(
+#             prompted_images, dim=0).to(adapter.devicename)
+#         return prompted_images
 
-    def get_prediction(self, sample, prompter, model, device, num_classes, adapter):
-        """Average Fusion 的 get_prediction
+#     def get_prediction(self, sample, prompter, model, device, num_classes, adapter):
+#         """Nearest Neighbor 的 get_prediction
 
-        @return prediction: [B] (B is the batch size)
-        """
-        self.logger.info("Average Fusion")
-        cluster_num = len(prompter)
-        logits_sum = torch.zeros(
-            sample["image"].shape[0], num_classes).to(device)
-        image = sample["image"].to(device)
-        for i in range(cluster_num):
-            prompted_images = prompter[i](image)
-            logits = model.forward(prompted_images)
-            # logits = rep2logit(output, num_classes)
-
-            logits_sum += logits
-            del prompted_images
-
-        # 计算平均值
-        average_logits = logits_sum / cluster_num
-        prediction = torch.argmax(average_logits, dim=0)
-        return prediction
+#         @return loss: [1]
+#         """
+#         prompted_images = adapter.get_prompted_image_train(
+#             sample["epoch"], sample, prompter)
+#         return torch.argmax(adapter.model(prompted_images), dim=-1)
 
 
-class majorityAggregation(AggregationStrategy):
-    def get_prompted_images(self, sample, prototype_gather, prompter_gather, adapter):
-        """Majority Voting 的 get_prompted_images
+class BaseAggregation(AggregationStrategy):
+    def __init__(self) -> None:
+        super().__init__()
+        self.prompter = None
+        self.model = None
+        self.device = None
+        self.adapter = None
+        self.precomputed_reps = None
+        self.precomputed_logits = None
+        self.cluster_norms = None
 
-        @return prompted_images: [B, P, C, H, W], P is the number of prototypes
-        """
-        return get_all_prototyped_prompted_images(sample, prototype_gather, prompter_gather, adapter)
+    def update(self, prompter, model, device, adapter):
+        self.prompter = prompter
+        self.model = model
+        self.device = device
+        self.adapter = adapter
+        self.precomputed_reps = self.precompute_reps()
+        self.precomputed_logits = self.precompute_logits()
+        self.cluster_norms = [torch.norm(cluster.sigma) ** 2 if cluster.sigma is not torch.nan else torch.nan for cluster in adapter.cluster_list["training"]]
 
-    def get_prediction(self, sample, prompter, model, device, num_classes, adapter):
-        """Majority Voting 的 get_prediction
 
-        @return prediction: [B] (B is the batch size)
-        """
-        # get all losses for each prompted image
-        # losses
-        # first dimension: batch
-        # second dimension: prototype ind
-        # other dimension: loss
+    def precompute_reps(self):
+        # 提前计算所有clusters的representation
+        cluster_list = self.adapter.cluster_list["training"]
+        rep_dict = {}
+        for i, cluster in enumerate(cluster_list):
+            image = cluster.sample_image.to(self.device)
+            prompted_images = self.prompter[i](image)
+            image_rep = self.model.forward_features(prompted_images)
+            rep_dict[i] = image_rep
+        return rep_dict
 
-        cluster_num = len(prompter)
+    def precompute_logits(self):
+        # 提前计算所有clusters的logits
+        self.precompute_logits = {}
+        for i, rep in self.precomputed_reps.items():
+            logits = self.model.head(rep)
+            self.precompute_logits[i] = logits
+
+    def get_prediction(self, sample, num_classes):
+        logging.info(f"{self.aggregation_method} Aggregation")
+
+        cluster_list = self.adapter.cluster_list["training"]
         counts = None
-        image = sample["image"].to(device)
-        for i in range(cluster_num):
-            prompted_images = prompter[i](image)
-            logits = model(prompted_images)
-            # self.logger.info(f"logits.shape: {str(logits.shape)}")
-            # counts += logits
-            if counts is None:
-                counts = logits
-            else:
-                counts += logits
-            del prompted_images
-
-        return torch.argmax(counts, dim=-1)
-
-
-class gaussianAggregation(AggregationStrategy):
-    def get_prediction(self, sample, prompter, model, device, num_classes, adapter):
-        """Gaussian Aggregation 的 get_prediction
-
-        @return prediction: [B] (B is the batch size)
-        """
-        logging.info("Gaussian Aggregation")
-        time_start = torch.cuda.Event(enable_timing=True)
-        time_end = torch.cuda.Event(enable_timing=True)
-
-        time_start.record()
-        cluster_list = adapter.cluster_list["training"]
-        counts = None
-        image = sample["image"].to(device)
-        # 对每个cluster计算一次norm，而不是在循环中重复计算
-        norms = [torch.norm(cluster.sigma) ** 2 if cluster.sigma is not torch.nan else torch.nan for cluster in cluster_list]
-
 
         if torch.cuda.is_available():
-            cluster_num = len(cluster_list)
-            streams = [Stream() for _ in range(cluster_num)]
-
             with torch.no_grad():
-                for i, stream in enumerate(streams):
-                    with torch.cuda.stream(stream):
-                        if cluster_list[i].sigma is torch.nan:
-                            # give a warning
-                            # self.logger.warning("sigma is nan")
-                            continue
+                for i, cluster in enumerate(cluster_list):
+                    counts = self.process_cluster(i, cluster, counts)
 
-                        prompted_images = prompter[i](image)
-                        image_rep = model.forward_features(prompted_images)
-                        logits = model.head(image_rep)
-
-                        # 计算高斯权重
-                        diff = image_rep - cluster_list[i].prototype
-                        # assert device correct
-                        assert diff.device == device
-                        weights = torch.exp(-torch.sum(diff ** 2, dim=1) / (2 * norms[i]))
-                        # 加权预测
-                        # counts += weights.unsqueeze(1) * logits
-                        if counts is None:
-                            counts = weights.unsqueeze(1) * logits
-                        else:
-                            counts.add_(weights.unsqueeze(1) * logits)
-
-            for stream in streams:
-                stream.synchronize()
+            torch.cuda.synchronize()
         else:
-            # cpu
-            for i in range(len(cluster_list)):
-                if cluster_list[i].sigma is torch.nan:
-                    # give a warning
-                    # self.logger.warning("sigma is nan")
-                    continue
-
-                prompted_images = prompter[i](image)
-                image_rep = model.forward_features(prompted_images)
-                logits = model.head(image_rep)
-
-                # 计算高斯权重
-                diff = image_rep - cluster_list[i].prototype
-                # assert device correct
-                assert diff.device == device
-                weights = torch.exp(-torch.sum(diff ** 2, dim=1) / (2 * norms[i]))
-                # 加权预测
-                # counts += weights.unsqueeze(1) * logits
-                if counts is None:
-                    counts = weights.unsqueeze(1) * logits
-                else:
-                    counts.add_(weights.unsqueeze(1) * logits)
+            # CPU处理
+            for i, cluster in enumerate(cluster_list):
+                counts = self.process_cluster(i, cluster, counts)
 
         # 得到最终预测
-        prediction = torch.argmax(counts, dim=1)
-        time_end.record()
-
-
-        logging.info(f"gaussianAggregation time: {time_start.elapsed_time(time_end)}")
+        prediction = torch.argmax(
+            counts, dim=1) if counts is not None else None
 
         return prediction
+
+    def process_cluster(self, index, cluster, counts):
+        logits = self.precomputed_logits[index]
+
+        if self.aggregation_method == "gaussian":
+            # 计算高斯权重
+            diff = self.precomputed_reps[index] - cluster.prototype
+            norms = self.cluster_norms
+            weights = torch.exp(-torch.sum(diff ** 2,
+                                dim=1) / (2 * norms[index]))
+            logits_weighted = weights.unsqueeze(1) * logits
+
+        if self.aggregation_method == "majority":
+            logits_weighted = logits
+
+        if self.aggregation_method == "nearest":
+            # 计算距离矩阵
+            distance_matrix = calculate_distance_matrix(
+                self.precomputed_reps[index], cluster.prototype)
+            # 计算最近邻
+            indices = torch.argmin(distance_matrix, dim=-1)
+            logits_weighted = logits[indices]
+
+        else:  # 默认为 majority
+            raise NotImplementedError
+
+        # 加权预测
+        if counts is None:
+            counts = logits_weighted
+
+
+class nearestAggregation(BaseAggregation):
+    def __init__(self) -> None:
+        super().__init__()
+        self.aggregation_method = "nearest"
+
+    def update(self, prompter, model, device, adapter):
+        # super().__init__(prompter, model, device, adapter)
+        super().update(prompter, model, device, adapter)
+
+    def get_prediction(self, sample, num_classes):
+        logging.info(f"{self.aggregation_method} Aggregation")
+
+        # 其他逻辑与 BaseAggregation 相同
+        return super().get_prediction(sample, num_classes)
+
+
+class gaussianAggregation(BaseAggregation):
+    def __init__(self) -> None:
+        super().__init__()
+        self.aggregation_method = "gaussian"
+
+    def get_prediction(self, sample, num_classes):
+        return super().get_prediction(sample, num_classes)
+
+
+class majorityAggregation(BaseAggregation):
+    def __init__(self) -> None:
+        super().__init__()
+        self.aggregation_method = "majority"
+
+    def get_prediction(self, sample, num_classes):
+        super().get_prediction(sample, num_classes)
