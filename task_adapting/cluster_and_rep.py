@@ -3,7 +3,7 @@ File: /cluster_and_rep.py
 Created Date: Monday January 1st 2024
 Author: Zihan
 -----
-Last Modified: Wednesday, 3rd January 2024 11:37:57 am
+Last Modified: Friday, 5th January 2024 5:54:31 pm
 Modified By: the developer formerly known as Zihan at <wzh4464@gmail.com>
 -----
 HISTORY:
@@ -20,6 +20,7 @@ class ClusterAndRep:
         def __init__(self, cluster, rep):
             self.cluster = cluster
             self.rep = rep
+
     def __init__(self, image, adapter):
         self.rep, self.cluster = self.get_rep_and_cluster(
             image, adapter.prototype_gather, adapter.model, adapter.devicename)
@@ -37,7 +38,7 @@ class ClusterAndRep:
                 rep_sum + prototype_gather_sum - 2 * torch.mm(rep, prototype_gather.T))
             cluster_idx = torch.argmin(distance_matrix, dim=-1)
         return rep.to(device), cluster_idx.to(device)
-    
+
     def __getitem__(self, idx):
         # 确保idx在有效范围内
         if idx < 0 or idx >= len(self.cluster):
@@ -59,23 +60,26 @@ class ClusterAndRep:
 class ClusterAndRepList:
     def __init__(self, path, dataset, adapter, renew=False):
         if os.path.exists(path) and not renew:
-            self.cluster_and_rep_list = torch.load(path, map_location=adapter.devicename)
+            self.cluster_and_rep_list = torch.load(
+                path, map_location=adapter.devicename)
         else:
             self.cluster_and_rep_list = [
                 ClusterAndRep(data_item["image"].to(
                     adapter.devicename), adapter)
                 for data_item in dataset
             ]
-            torch.save(self.cluster_and_rep_list, path)
+            # torch.save(self.cluster_and_rep_list, os.path.join(
+            #     path, f"_devicename_{adapter.devicename}.pth"))
+            torch.save(
+                self.cluster_and_rep_list,
+                f"{path}_devicename_{adapter.devicename}.pth",
+            )
 
     def __getitem__(self, batch_index):
         return self.cluster_and_rep_list[batch_index]
 
     def __len__(self):
         return len(self.cluster_and_rep_list)
-
-    def save(self, path):
-        torch.save(self.cluster_and_rep_list, path)
 
 
 class ProtoType:
@@ -115,14 +119,15 @@ class ProtoType:
                 if cluster_and_rep.cluster == self.label
             )
 
-        logging.info(f"len(self.items): {len(self.items)} for label {self.label}")
+        logging.info(
+            f"len(self.items): {len(self.items)} for label {self.label}")
         if not self.items:
             self.sigma = torch.nan
         else:
             self.sigma = torch.std(
                 torch.stack([cluster_and_rep_list[self.items[idx]["batch_index"]].rep for idx in range(len(self.items))]), dim=0) \
-                    # [B, Rep_dim(768)]
-        
+                # [B, Rep_dim(768)]
+
 
 # protypes[i] = ProtoType(prototype, label, cluster_and_rep_list : ClusterAndRepList)
 # prototype_gather = []

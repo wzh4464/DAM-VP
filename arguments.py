@@ -172,7 +172,7 @@ class Arguments:
         else:
             raise NotSupportedError
         # if distributed:
-        self._parser.add_argument('--local_rank', type=int, default=0)
+        self._parser.add_argument('--local-rank', type=int, default=0)
         self._parser.add_argument('--world_size', type=int, default=1)
 
     def add_common_args(self):
@@ -206,7 +206,6 @@ class Arguments:
         self._parser.add_argument('--pin_memory', action='store_true', help='Pin CPU memory in DataLoader for more efficient (sometimes) transfer to GPU.')
         self._parser.set_defaults(pin_memory=True)
         self._parser.add_argument('--distributed', action='store_true', default=False, help='Whether to use the distributed mode [default: False].')
-
 
     def add_meta_train_args(self):
         ### data related

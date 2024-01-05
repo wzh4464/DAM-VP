@@ -1,12 +1,16 @@
+from argparse import Namespace
 import os
 import sys
 import time
-from typing import Any
+from typing import Any, List
 import numpy as np
 from copy import deepcopy
+import logging
 
 import torch
 import torch.nn as nn
+import torch.distributed as dist
+from torch.utils.data import DataLoader
 import sklearn.cluster as cluster
 
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
@@ -19,14 +23,14 @@ import models.backbones.backbone_vit as bb
 from data_utils import loader as data_loader
 from utils.functional import set_seed
 from utils.train_utils import cosine_lr
-import utils.logging as logging
+import utils.logging as logGing
 
 from arguments import Arguments
 from aggregation import AggregationStrategy, nearestAggregation
 from cluster_and_rep import ClusterAndRep, ClusterAndRepList, ProtoTypeList
 
 
-logger = logging.get_logger("dam-vp")
+logger = logGing.get_logger("dam-vp")
 
 
 class Adapter(object):
@@ -35,51 +39,48 @@ class Adapter(object):
     use strategy mode
     """
 
-    def __init__(self, args: Arguments, model: bb.VisionTransformer, aggregation_strategy: AggregationStrategy = nearestAggregation()):
+    def __init__(self, args: Arguments, model: bb.VisionTransformer, aggregation_strategy_list: List[AggregationStrategy]):
         super(Adapter, self).__init__()
-        self.args = args
+        self.args: Namespace = args
         self.model: bb.VisionTransformer = model.eval()
 
-        self.logger = logging.get_logger("dam-vp")
+        self.logger: logging.Logger = logGing.get_logger("dam-vp")
 
-        self.lr = args.lr
+        self.lr: float = args.lr
         self.weight_decay = args.weight_decay
-        self.criterion = torch.nn.CrossEntropyLoss().to(args.device)  # 交叉熵损失函数
+        self.criterion = nn.CrossEntropyLoss().to(args.device)  # 交叉熵损失函数
 
-        self.device = args.device
-        self.rank = torch.distributed.get_rank() if torch.distributed.is_initialized() else 0
+        self.device: torch.device = args.device
+        self.rank: int = dist.get_rank() if dist.is_initialized() else 0
 
         # destination to this gpu -- .to(self.devicename)
         self.devicename = torch.device(
             f"cuda:{self.rank}" if torch.cuda.is_available() else get_current_device())
         self.logger.info(f"self.devicename: {self.devicename}")
 
-        self.local_batch_size = args.batch_size // args.num_gpus
-        self.aggregation_strategy = aggregation_strategy
+        self.local_batch_size = args.batch_size // args.num_gpus if dist.is_initialized(
+        ) else args.batch_size
+        self.aggregation_strategy_list = aggregation_strategy_list
 
-    def nums_of_learnable_params(self, model):
-        n_parameters = sum(p.numel()
-                           for p in model.parameters() if p.requires_grad)
-        logger.info('number of params (M): %.2f' % (n_parameters / 1.e6))
-
-    def loss_function(self, logits, target):
+    def loss_function(self, logits, target) -> torch.Tensor:
         """Loss function to predict GT target.
         """
         return self.criterion(logits, target)
 
-    def load_prompter(self, prompter_path=None):
+    def load_prompter(self, prompter_path=None) -> (prompters.PadPrompter | prompters.FixedPatchPrompter | prompters.RandomPatchPrompter):
         """Load the trained visual prompter.
         """
         prompter = prompters.__dict__[self.args.prompt_method](
             self.args).to(self.devicename)  # prompt_method: pad, fixed, random, default: prompter = padding(args)
         if prompter_path is not None:
-            checkpoint = torch.load(prompter_path, map_location=self.devicename)
+            checkpoint = torch.load(
+                prompter_path, map_location=self.devicename)
             prompter.load_state_dict(checkpoint['state_dict'])
             logger.info(
                 f"Loading meta-trained visual prompts from {prompter_path}")
         return prompter
 
-    def get_active_neuron_index(self):
+    def get_active_neuron_index(self) -> torch.Tensor:
         """Search the most active neurons in the representaion.
         """
         set_seed(self.args.seed)
@@ -93,7 +94,7 @@ class Adapter(object):
             # indices = torch.unique(indices)
         return indices
 
-    def rep2logit(self, output, num_classes):
+    def rep2logit(self, output, num_classes) -> torch.Tensor:
         """Convert the output representations to logits. 
         把输出的表示转换为logits
         """
@@ -104,7 +105,7 @@ class Adapter(object):
         indices = torch.unique(indices)
         return output[:, indices]
 
-    def get_prompted_image(self, image, prototype_gather=None, prompter=None, prompter_gather=None):
+    def get_prompted_image(self, image, prototype_gather=None, prompter=None, prompter_gather=None) -> torch.Tensor:
         """Obtain the prompted batch images.
         """
         if self.args.wo_da:
@@ -129,7 +130,7 @@ class Adapter(object):
             ]
             return torch.cat(prompted_image, dim=0)
 
-    def get_prompted_image_val(self, sample, prototype_gather=None, prompter=None, prompter_gather=None):
+    def get_prompted_image_val(self, sample, prototype_gather=None, prompter=None, prompter_gather=None) -> torch.Tensor:
         """Obtain the prompted batch images with specified aggregation method."""
         if not self.args.wo_da:
             return self.get_prompted_image_w_da(
@@ -138,14 +139,14 @@ class Adapter(object):
         assert prompter is not None
         return prompter(sample["image"].to(self.devicename))
 
-    def get_prompted_image_w_da(self, prototype_gather, prompter_gather, sample):
+    def get_prompted_image_w_da(self, prototype_gather, prompter_gather, sample) -> torch.Tensor:
         assert prototype_gather is not None
         assert prompter_gather is not None
         with torch.no_grad():
             # rep_batch = self.model.forward_features(image)  # [N, emd_dim]
-            return self.aggregation_strategy.get_prompted_images(sample, prototype_gather, prompter_gather, self)
+            return self.aggregation_strategy_list.get_prompted_images(sample, prototype_gather, prompter_gather, self)
 
-    def coarse_clustering(self, data_loader):
+    def coarse_clustering(self, train_loader) -> None:
         """Diversity-Aware Adaption on downstream data.
         We roughly divide the downstream task data into several partitions, each 
         partition presents a coarsely divided cluster. Different clusters correspond 
@@ -155,19 +156,20 @@ class Adapter(object):
             self.num_coarse_classes: number of coarsely divided clusters
             self.prototype_gather: prototypes of each cluster
         """
-        train_loader, _, _ = data_loader
-        threshold_dict = {
-            "resnet50-1k": 21,
-            "vit-b-1k": 31,
-            "vit-b-22k": 10,
-            "swin-b-22k": 20,
-            "moco-v3-b-1k": 18
-        }
-        hc = cluster.AgglomerativeClustering(
-            n_clusters=None,
-            linkage='average',
-            distance_threshold=threshold_dict[self.args.pretrained_model]
-        )
+        threshold_dict: dict \
+            = {
+                "resnet50-1k": 21,
+                "vit-b-1k": 31,
+                "vit-b-22k": 10,
+                "swin-b-22k": 20,
+                "moco-v3-b-1k": 18
+            }
+        hc: cluster.AgglomerativeClustering = \
+            cluster.AgglomerativeClustering(
+                n_clusters=None,
+                linkage='average',
+                distance_threshold=threshold_dict[self.args.pretrained_model]
+            )
         with torch.no_grad():
             for i, sample in enumerate(train_loader):
                 image = sample["image"].to(self.devicename)
@@ -178,18 +180,18 @@ class Adapter(object):
                     rep_gather = rep_gather[:1000]
                     break
 
-        y_pred = hc.fit(rep_gather.detach().cpu().numpy()).labels_
-        y_pred = torch.from_numpy(y_pred).to(self.devicename)
-        coarse_class_idx = torch.unique(y_pred)
-        self.num_coarse_classes = len(coarse_class_idx)
+        y_pred: np.ndarray = hc.fit(rep_gather.detach().cpu().numpy()).labels_
+        y_pred: torch.Tensor = torch.from_numpy(y_pred).to(self.devicename)
+        coarse_class_idx: torch.Tensor = torch.unique(y_pred)
+        self.num_coarse_classes: int = len(coarse_class_idx)
         logger.info(
             f"Nums of coarsely divided categories for test dataset {self.args.test_dataset}: {len(coarse_class_idx)}"
         )
 
-        prototype_gather = []
+        prototype_gather: List[torch.Tensor] = []
         for i in range(len(coarse_class_idx)):
-            pos = torch.where(y_pred == i)[0]
-            prototype = rep_gather[pos].mean(0).unsqueeze(0)
+            pos: torch.Tensor = torch.where(y_pred == i)[0]
+            prototype: torch.Tensor = rep_gather[pos].mean(0).unsqueeze(0)
             prototype_gather.append(prototype)
         self.prototype_gather = torch.cat(prototype_gather)
         logger.info(
@@ -347,85 +349,69 @@ class Adapter(object):
             self.coarse_clustering(test_data)
         return logger, train_loader, val_loader, test_loader, prompter
 
-    def init_with_head(self, test_data, prompter_path):
+    def init_with_head(self, test_data: List[DataLoader], prompter_path: str) \
+        -> tuple[logging.Logger, DataLoader, DataLoader, DataLoader, \
+            prompters.PadPrompter | prompters.FixedPatchPrompter | prompters.RandomPatchPrompter, \
+            torch.optim.SGD, cosine_lr]:
         """define logger, train_loader, val_loader, test_loader, prompter and do coarse clustering.
         * test_data is prompted here
         """
-        logger = self.logger
+        logger: logging.Logger = self.logger
         logger.info(f"self.devicename: {self.devicename}")
 
-        train_loader_len = len(test_data[0])
+        train_loader, val_loader, test_loader = test_data
+        train_loader_len = len(train_loader)
 
         prompter = self.load_prompter(prompter_path)
 
         begin_time_cluster = time.time()
 
         if not self.args.wo_da:
-            self.coarse_clustering(test_data)
-            # prototype_gather updated here
+            coarse_cocluster_path = f"{self.args.output_dir}/coarse_cluster_{self.args.test_dataset}_device_{self.devicename}.pth"
+            coarse_renew: bool = False
+
+            if (coarse_renew or not os.path.exists(coarse_cocluster_path)):
+                self.coarse_clustering(train_loader)
+                # save self.num_coarse_classes and self.prototype_gather
+
+                torch.save({
+                    "num_coarse_classes": self.num_coarse_classes,
+                    "prototype_gather": self.prototype_gather
+                }, coarse_cocluster_path)
+            else:
+                checkpoint = torch.load(coarse_cocluster_path)
+                self.num_coarse_classes = checkpoint["num_coarse_classes"]
+                self.prototype_gather = checkpoint["prototype_gather"]
 
         best_prompter, optimizer, scheduler = self.make_opt_and_bpr(
             train_loader_len, prompter)
 
-        # updated_data = []
-
-        # for loader in test_data:
-        #     updated_loader = []
-        #     for data_item in loader:
-        #         image = data_item["image"].to(self.devicename)
-        #         _, cluster = self.get_rep_and_cluster(
-        #             image, self.prototype_gather)
-        #         del image
-
-        # self.cluster_mapping = {
-        #     "train_cluster_mapping" : self.create_cluster_mapping(test_data[0], self.args.batch_size),
-        #     "val_cluster_mapping" : self.create_cluster_mapping(test_data[1], self.args.batch_size),
-        #     "test_cluster_mapping" : self.create_cluster_mapping(test_data[2], self.args.batch_size)
-        # }
         renew = False
-        # renew = True
-        self.cluster_mappings = {
+        renew = True
+        self.cluster_mappings: dict[str, ClusterAndRepList] = {
             "train_cluster_mapping": ClusterAndRepList(
-                f"{self.args.output_dir}/train_cluster_mapping_{self.args.test_dataset}.pt", test_data[0], self, renew=renew),
+                f"{self.args.output_dir}/train_cluster_mapping_{self.args.test_dataset}", train_loader, self, renew=renew),
             "val_cluster_mapping": ClusterAndRepList(
-                f"{self.args.output_dir}/val_cluster_mapping_{self.args.test_dataset}.pt", test_data[1], self, renew=renew),
+                f"{self.args.output_dir}/val_cluster_mapping_{self.args.test_dataset}", val_loader, self, renew=renew),
             "test_cluster_mapping": ClusterAndRepList(
-                f"{self.args.output_dir}/test_cluster_mapping_{self.args.test_dataset}.pt", test_data[2], self, renew=renew)
+                f"{self.args.output_dir}/test_cluster_mapping_{self.args.test_dataset}", test_loader, self, renew=renew)
         }
 
         self.cluster_list = {
             "training": ProtoTypeList(
-               self.prototype_gather, self.cluster_mappings["train_cluster_mapping"]),
+                self.prototype_gather, self.cluster_mappings["train_cluster_mapping"]),
             # "validating": ProtoTypeList(
             #     self.prototype_gather, self.cluster_mappings["val_cluster_mapping"]),
             # "testing": ProtoTypeList(
             #     self.prototype_gather, self.cluster_mappings["test_cluster_mapping"])
-        } 
+        }
 
         logger.info(f"Cluster time: {time.time() - begin_time_cluster}")
         # remove cache
         torch.cuda.empty_cache()
-        train_loader, val_loader, test_loader = test_data
-        logger.info(
-            f"type of val_loader: {type(val_loader)} in init_with_head")
 
         return logger, train_loader, val_loader, test_loader, \
             best_prompter, optimizer, scheduler
-
-    def compute_cluster_labels(self, dataset):
-        # 这个函数计算并返回整个数据集的cluster标签列表
-        self.logger.info("compute_cluster_labels")
-        # cluster_labels = []
-        # for data_item in dataset:
-        #     cluster_labels.append(ClusterAndRep(data_item["image"].to(self.devicename), self))
-        cluster_labels = [
-            ClusterAndRep(data_item["image"].to(self.devicename), self)
-            for data_item in dataset
-        ]
-
-        self.logger.info(f"cluster_labels len: {len(cluster_labels)}")
-        self.logger.info(f"cluster_labels[0] type: {type(cluster_labels[0])}")
-        return cluster_labels
 
     def get_prompted_image_train(self, batch_idx, sample, prompter_gather):
         """Obtain the prompted batch images using CUDA streams."""
@@ -458,15 +444,6 @@ class Adapter(object):
         # 将所有处理后的图像合并成一个批次
         return torch.cat(prompted_images, dim=0)
 
-        # with torch.no_grad():
-        #     prompted_list = [
-        #         prompter_gather[self.cluster_mapping["train_cluster_mapping"][batch_idx].cluster[idx]](
-        #             sample["image"][idx].unsqueeze(0).to(self.devicename))
-        #         for idx in range(self.local_batch_size)
-        #     ]
-
-        # return torch.cat(prompted_list, dim=0)
-
     def training_part(self, logger, train_loader, prompter, optimizer, scheduler, epoch):
         for i, sample in enumerate(train_loader):
             # adjust learning rate
@@ -485,17 +462,17 @@ class Adapter(object):
                 f"[Prompt Finetuning] Epoch: [{epoch}/{self.args.epochs}], Step: [{i}/{len(train_loader)}], Training loss: {loss.item()}, device: {self.devicename}"
             )
             # save the prompter
-            prompter_state_dicts = {f'prompter_{idx}': p.state_dict() for idx, p in enumerate(prompter)}
+            prompter_state_dicts = {
+                f'prompter_{idx}': p.state_dict() for idx, p in enumerate(prompter)}
             torch.save({
                 'epoch': epoch,
                 'prompter_state_dicts': prompter_state_dicts,
                 'optimizer': optimizer.state_dict(),
                 # 'scheduler': scheduler.state_dict(),
-            }, f"{self.args.output_dir}/prompter_{self.args.test_dataset}_{epoch}.pt")
+            }, f"{self.args.output_dir}/prompter_{self.args.test_dataset}_epoch_{epoch}_device_{self.devicename}.pth")
 
-
-    def evaluate(self, logger, data_loader, prompter, mode, epoch, best_acc=None):
-        with torch.no_grad():
+    def evaluate(self, logger:logging.Logger, data_loader: DataLoader, prompter: list[
+                    prompters.PadPrompter | prompters.FixedPatchPrompter | prompters.RandomPatchPrompter], mode: str, epoch: int) -> float:
             num_total, correct = 0, 0
             begin_time = time.time()
             for i, sample in enumerate(data_loader):
@@ -525,22 +502,30 @@ class Adapter(object):
                 f"[Prompt {mode.capitalize()}] Epoch: {epoch}, {mode} acc: {acc}, device: {self.devicename}")
             # time
             logger.info(
-                f"Time consuming of {mode} (seconds): {time.time() - begin_time}")
-
-            if mode == 'validating' and best_acc is not None and acc > best_acc:
-                best_acc = acc
-                return deepcopy(prompter)
+                f"Time consuming of {mode} (seconds): {time.time() - begin_time} for {self.aggregation_strategy_name}")
             return acc
 
-    def make_test(self, logger, test_loader, epoch, best_prompter):
-        return self.evaluate(logger, test_loader, best_prompter, 'testing', epoch)
+    def make_test(self, logger, test_loader, epoch, best_prompter) -> float:
+        for strategy in self.aggregation_strategy_list:
+            logger.info(f"Testing with {strategy.__class__.__name__}")
+            try:
+                self.aggregation_strategy = strategy
+                self.aggregation_strategy_name = strategy.__class__.__name__
+                acc_test = self.evaluate(
+                    logger, test_loader, best_prompter, 'testing', epoch)
+            except Exception as e:
+                logger.info(f"Exception: {e}")
+                continue
 
-    def make_validation(self, logger, val_loader, prompter, best_acc_val, epoch):
-        # logger.info(
-        # f"type of val_loader: {type(val_loader)} in make_validation")
-        return self.evaluate(logger, val_loader, prompter, 'validating', epoch, best_acc_val)
+    def make_validation(self, logger, val_loader, prompter, best_prompter, best_acc_val, epoch) -> tuple[float, prompters.PadPrompter | prompters.FixedPatchPrompter | prompters.RandomPatchPrompter]:
+        self.aggregation_strategy_name = "nearestAggregation"
+        acc_val = self.evaluate(logger, val_loader, prompter, 'validating', epoch)
+        if acc_val > best_acc_val:
+            best_acc_val = acc_val
+            best_prompter = deepcopy(prompter)
+        return best_acc_val, best_prompter
 
-    def make_opt_and_bpr(self, train_loader_len, _prompter):
+    def make_opt_and_bpr(self, train_loader_len, _prompter) -> tuple[prompters.PadPrompter, torch.optim.SGD, cosine_lr]:
         if self.args.wo_da:
             # prompter = deepcopy(prompter)
             optimizer = torch.optim.SGD([
@@ -580,8 +565,10 @@ class Adapter(object):
         1. Split the cluster and train the prompter for each cluster.
         """
 
-        logger, train_loader, val_loader, test_loader, best_prompter, optimizer, scheduler \
+        logger, train_loader, val_loader, test_loader, best_prompter_gather, optimizer, scheduler \
             = self.init_with_head(test_data, prompter_path)
+
+        prompter_gather : List[prompters.PadPrompter | prompters.FixedPatchPrompter | prompters.RandomPatchPrompter] = best_prompter_gather[:]
 
         self.model.get_classifier().train()
         BEST_ACC_VAL = -np.inf
@@ -592,13 +579,30 @@ class Adapter(object):
         # label with cluster result
         for epoch in range(self.args.epochs):
             # train
-            self.training_part(logger, train_loader, best_prompter,
+            self.training_part(logger, train_loader, prompter_gather,
                                optimizer, scheduler, epoch)
             # validate
-            best_prompter = self.make_validation(
-                logger, val_loader, best_prompter, BEST_ACC_VAL, epoch)
+            [BEST_ACC_VAL, best_prompter_gather] = self.make_validation(
+                logger, val_loader, prompter_gather, best_prompter_gather, BEST_ACC_VAL, epoch)
             # test
-            if epoch > 0 and (epoch + 1) % 5 == 0:
+            # epoch = self.args.epochs - 1
+            if epoch == self.args.epochs - 1:
                 acc_test = self.make_test(
-                    logger, test_loader, epoch, best_prompter)
+                    logger, test_loader, epoch, best_prompter_gather)
         return acc_test
+
+    def save_checkpoint(self, path, test_data, prompters_path):
+        logger, train_loader, val_loader, test_loader, best_prompter, optimizer, scheduler \
+            = self.init_with_head(test_data, prompters_path)
+        self.training_part(logger, train_loader, best_prompter,
+                           optimizer, scheduler, 0)
+        torch.save({
+            "prompters": best_prompter.state_dict()
+        }, os.path.join(path, f"device_{self.devicename}.pth"))
+
+        try:
+            torch.load(os.path.join(path, f"device_{self.devicename}.pth"))
+        except:
+            logger.info("checkpoint save failed")
+        else:
+            logger.info("checkpoint save success")

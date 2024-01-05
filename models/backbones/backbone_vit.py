@@ -294,7 +294,7 @@ class VisionTransformer(nn.Module):
         if self.num_tokens == 2:
             self.head_dist = nn.Linear(self.embed_dim, self.num_classes) if num_classes > 0 else nn.Identity()
 
-    def forward_features(self, x):
+    def forward_features(self, x) -> torch.Tensor:
         x = self.patch_embed(x)
         cls_token = self.cls_token.expand(x.shape[0], -1, -1)  # stole cls_tokens impl from Phil Wang, thanks
         if self.dist_token is None:
