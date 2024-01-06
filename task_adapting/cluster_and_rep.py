@@ -3,7 +3,7 @@ File: /cluster_and_rep.py
 Created Date: Monday January 1st 2024
 Author: Zihan
 -----
-Last Modified: Saturday, 6th January 2024 10:40:42 am
+Last Modified: Saturday, 6th January 2024 4:15:29 pm
 Modified By: the developer formerly known as Zihan at <wzh4464@gmail.com>
 -----
 HISTORY:
@@ -139,25 +139,23 @@ class ClusterAndRepList:
 
 
 class ProtoType:
+    #! prompter 也存一下
     """Clusters from diversity aware (in sense of prototype) clustering.
 
     Args:
         prototype: center of clusters
-        label: label of clusters
-        items: [
-                    {
-                        "batch_index": int,
-                        "index_in_batch": int
-                    }
-                ]
-        sigma: standard deviation of clusters
+        label: label of the prototype
+        matching_indices: indices of the images that match the label of the prototype [num_matching_indices]
+        sigma: standard deviation of the images that match the label of the prototype [rep_dim]
+        prompter: prompter of the prototype
     """
 
     def __init__(self, prototype: torch.Tensor, label: int, cluster_and_rep_list: ClusterAndRepList):
         self.prototype = prototype
         self.label = label
-        self.items = []
+        self.matching_indices = None
         self.sigma = 0
+        # self.prompter = None
         self.update(cluster_and_rep_list)
 
     def update(self, cluster_and_rep_list: ClusterAndRepList):
@@ -168,21 +166,26 @@ class ProtoType:
         all_reps = cluster_and_rep_list.get_all_reps()
 
         # 找到匹配self.label的索引
-        matching_indices = (all_clusters == self.label).nonzero().squeeze()
+        self.matching_indices: torch.Tensor = (all_clusters == self.label).nonzero().squeeze() # [num_matching_indices]
+        logging.info(f"number of matching indices: {self.matching_indices.numel()} for label {self.label} in device {self.prototype.device}")
 
-        if matching_indices.numel() < 2:
+        if self.matching_indices.numel() < 2:
             # 如果匹配的数量小于2，则不计算标准差
             self.sigma = torch.nan
         else:
             # 取出匹配的rep数据
-            matching_reps = all_reps[matching_indices]
+            matching_reps = all_reps[self.matching_indices]
             # 计算标准差
             self.sigma = torch.std(matching_reps, dim=0)
             assert self.sigma.shape == self.prototype.shape
             logging.info(
-                f"number of matching indices: {matching_indices.numel()} for label {self.label}")
+                f"number of matching indices: {self.matching_indices.numel()} for label {self.label} in device {self.prototype.device}")
             logging.info(
                 f"simga: {self.sigma.shape} for label {self.label}")
+            
+        # load prompter
+        # ! hard code path
+        # self.prompter = torch.load("result/cifar10_gaussian_pth_saved_distributed/prompter_cifar10_epoch_49_device_{self.prototype.device}.pth")
 
 
 # protypes[i] = ProtoType(prototype, label, cluster_and_rep_list : ClusterAndRepList)
@@ -201,15 +204,11 @@ class ProtoTypeList:
 
     Way to use:
         prototype_list = ProtoTypeList(prototype_gather, cluster_and_rep_list)
+        prototype_list.prototype_gather : torch.Tensor [num_prototypes, rep_dim]
         prototype_list[label] : ProtoType
         prototype_list[label].prototype : torch.Tensor [1, rep_dim]
         prototype_list[label].label : int
-        prototype_list[label].items : [
-                    {
-                        "batch_index": int,
-                        "index_in_batch": int
-                    }
-                ]
+        prototype_list[label].matching_indices : torch.Tensor [num_matching_indices]
         prototype_list[label].sigma : torch.Tensor [rep_dim]
     """
     def __init__(self, prototype_gather, cluster_and_rep_list: ClusterAndRepList):

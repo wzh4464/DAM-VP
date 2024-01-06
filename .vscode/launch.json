@@ -104,7 +104,7 @@
             }
         },
         {
-            "name": "Python: distributed cifar10",
+            "name": "Python: distributed cifar10 aggregation",
             "type": "python",
             "request": "launch",
             "console": "integratedTerminal",
@@ -118,7 +118,7 @@
                 "--master_port=1234",
                 "task_adapting/main.py",
                 "--output_dir",
-                "result/cifar10_gaussian_pth_saved_distributed",
+                "result/cifar10_aggregation",
                 "--batch_size",
                 "96",
                 "--base_dir",

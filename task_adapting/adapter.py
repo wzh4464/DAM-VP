@@ -61,6 +61,16 @@ class Adapter(object):
         self.local_batch_size = args.batch_size // args.num_gpus if dist.is_initialized(
         ) else args.batch_size
         self.aggregation_strategy_list = aggregation_strategy_list
+        self.train_loader = None
+        self.val_loader = None
+        self.test_loader = None
+        self.cluster_and_rep_list = None
+        self.prototype_list = None
+        self.aggregation_strategy = None
+        self.aggregation_strategy_name = None
+        self.num_coarse_classes = None
+        self.prototype_gather = None
+        self.indices = None
 
     def loss_function(self, logits, target) -> torch.Tensor:
         """Loss function to predict GT target.
@@ -105,7 +115,7 @@ class Adapter(object):
         indices = torch.unique(indices)
         return output[:, indices]
 
-    def get_prompted_image(self, image, prototype_gather=None, prompter=None, prompter_gather=None) -> torch.Tensor:
+    def get_nearest_prompted_image(self, image, prototype_gather=None, prompter=None, prompter_gather=None) -> torch.Tensor:
         """Obtain the prompted batch images.
         """
         if self.args.wo_da:
@@ -257,8 +267,8 @@ class Adapter(object):
                 scheduler(global_step)  # 调整学习率
                 image = sample["image"].to(self.devicename)
                 label = sample["label"].to(self.devicename)
-                prompted_image = self.get_prompted_image(image, prompter=prompter) \
-                    if self.args.wo_da else self.get_prompted_image(image, self.prototype_gather, prompter_gather=prompter_gather)
+                prompted_image = self.get_nearest_prompted_image(image, prompter=prompter) \
+                    if self.args.wo_da else self.get_nearest_prompted_image(image, self.prototype_gather, prompter_gather=prompter_gather)
                 output = self.model.forward_features(prompted_image)
                 logits = self.rep2logit(output, num_classes)
                 loss = self.loss_function(logits, label)
@@ -276,8 +286,8 @@ class Adapter(object):
                 for sample in val_loader:
                     image = sample["image"].to(self.devicename)
                     label = sample["label"].to(self.devicename)
-                    prompted_image = self.get_prompted_image(image, prompter=prompter) \
-                        if self.args.wo_da else self.get_prompted_image(image, self.prototype_gather, prompter_gather=prompter_gather)
+                    prompted_image = self.get_nearest_prompted_image(image, prompter=prompter) \
+                        if self.args.wo_da else self.get_nearest_prompted_image(image, self.prototype_gather, prompter_gather=prompter_gather)
                     output = self.model.forward_features(prompted_image)
                     logits = self.rep2logit(output, num_classes)
                     pred = torch.argmax(logits, dim=-1)
@@ -299,8 +309,8 @@ class Adapter(object):
                     for sample in test_loader:
                         image = sample["image"].to(self.devicename)
                         label = sample["label"].to(self.devicename)
-                        prompted_image = self.get_prompted_image(image, prompter=best_prompter) \
-                            if self.args.wo_da else self.get_prompted_image(image, self.prototype_gather, prompter_gather=best_prompter_gather)
+                        prompted_image = self.get_nearest_prompted_image(image, prompter=best_prompter) \
+                            if self.args.wo_da else self.get_nearest_prompted_image(image, self.prototype_gather, prompter_gather=best_prompter_gather)
                         output = self.model.forward_features(prompted_image)
                         logits = self.rep2logit(output, num_classes)
                         pred = torch.argmax(logits, dim=-1)
@@ -360,6 +370,9 @@ class Adapter(object):
         logger.info(f"self.devicename: {self.devicename}")
 
         train_loader, val_loader, test_loader = test_data
+        self.train_loader = train_loader
+        self.val_loader = val_loader
+        self.test_loader = test_loader
         train_loader_len = len(train_loader)
 
         prompter = self.load_prompter(prompter_path)
@@ -388,25 +401,25 @@ class Adapter(object):
 
         renew = False
         # renew = True
-        self.cluster_mappings: dict[str, ClusterAndRepList] = {
-            "train_cluster_mapping": ClusterAndRepList(
+        self.cluster_and_rep_list: dict[str, ClusterAndRepList] = {
+            "training": ClusterAndRepList(
                 f"{self.args.output_dir}/train_cluster_mapping_{self.args.test_dataset}", train_loader, self, renew=renew),
-            "val_cluster_mapping": ClusterAndRepList(
+            "validating": ClusterAndRepList(
                 f"{self.args.output_dir}/val_cluster_mapping_{self.args.test_dataset}", val_loader, self, renew=renew),
-            "test_cluster_mapping": ClusterAndRepList(
+            "testing": ClusterAndRepList(
                 f"{self.args.output_dir}/test_cluster_mapping_{self.args.test_dataset}", test_loader, self, renew=renew)
         }
-        # self.cluster_mappings["train_cluster_mapping"][0].cluster
+        # self.cluster_mappings["training"][0].cluster
         # tensor([ 73,  10,  74,   9,  33,  29,  32,  76,   4,  25,  75,  73,  42, 209,
         #         100,   2], device='cuda:0')
 
-        self.cluster_list = {
+        self.prototype_list = {
             "training": ProtoTypeList(
-                self.prototype_gather, self.cluster_mappings["train_cluster_mapping"]),
+                self.prototype_gather, self.cluster_and_rep_list["training"]),
             # "validating": ProtoTypeList(
-            #     self.prototype_gather, self.cluster_mappings["val_cluster_mapping"]),
+            #     self.prototype_gather, self.cluster_mappings["validating"]),
             # "testing": ProtoTypeList(
-            #     self.prototype_gather, self.cluster_mappings["test_cluster_mapping"])
+            #     self.prototype_gather, self.cluster_mappings["testing"])
         }
 
         logger.info(f"Cluster time: {time.time() - begin_time_cluster}")
@@ -419,7 +432,7 @@ class Adapter(object):
     def get_prompted_image_train(self, batch_idx, sample, prompter_gather):
         """Obtain the prompted batch images using CUDA streams."""
 
-        clusters = self.cluster_mappings["train_cluster_mapping"][batch_idx].cluster
+        clusters = self.cluster_and_rep_list["training"][batch_idx].cluster
         images = sample["image"].to(self.devicename)
 
         # if streams is supported, use streams to accelerate
@@ -503,22 +516,22 @@ class Adapter(object):
         return False
 
     def evaluate(self, logger: logging.Logger, data_loader: DataLoader, prompter: list[
-            prompters.PadPrompter | prompters.FixedPatchPrompter | prompters.RandomPatchPrompter], mode: str, epoch: int) -> float:
+            prompters.PadPrompter | prompters.FixedPatchPrompter | prompters.RandomPatchPrompter], mode: str, epoch: int, base_agg = None) -> float:
         num_total, correct = 0, 0
         begin_time = time.time()
         for i, sample in enumerate(data_loader):
             # sample is a dict
             # add an attribute "epoch" to it as i
-            sample["epoch"] = i
+            # sample["batch"] = i
             # image = sample["image"].to(self.devicename)
             label = sample["label"].to(self.devicename)
             # logger.info(
             #     f"type of data_loader: {type(data_loader)} in evaluate")
             if mode == 'testing':
                 testingAggregator = self.aggregation_strategy
+                testingAggregator.update_from_base(base_agg)
                 pred = testingAggregator.get_prediction(
-                    sample, prompter, self.model, self.devicename, len(
-                        data_loader.dataset.classes), self
+                    i, sample
                 )
             elif mode == 'validating':
                 validationAggregator = nearestAggregation()
@@ -543,20 +556,23 @@ class Adapter(object):
     def make_test(self, logger, test_loader, epoch, best_prompter) -> float:
         logging.info("Testing")
         base_agg = BaseAggregation()
-        base_agg.update(best_prompter, self.model, self.devicename, self)
+        base_agg.update(self.cluster_and_rep_list["testing"], self.prototype_list["training"], self.model, best_prompter, test_loader, self.local_batch_size, self.devicename, len(test_loader.dataset.classes))
         for strategy in self.aggregation_strategy_list:
             logger.info(f"Testing with {strategy.__class__.__name__}")
             strategy.update_from_base(base_agg)
             self.aggregation_strategy = strategy
             self.aggregation_strategy_name = strategy.__class__.__name__
             acc_test = self.evaluate(
-                logger, test_loader, best_prompter, 'testing', epoch)
+                logger, test_loader, best_prompter, 'testing', epoch, base_agg)
         return acc_test
 
     def make_validation(self, logger, val_loader, prompter, best_prompter, best_acc_val, epoch) -> tuple[float, prompters.PadPrompter | prompters.FixedPatchPrompter | prompters.RandomPatchPrompter]:
         self.aggregation_strategy_name = "nearestAggregation"
+        base_agg = BaseAggregation()
+        base_agg.update(self.cluster_and_rep_list["validating"], self.prototype_list["training"], self.model, prompter, val_loader, self.local_batch_size, self.devicename, len(val_loader.dataset.classes))
+        self.strategy = nearestAggregation()
         acc_val = self.evaluate(
-            logger, val_loader, prompter, 'validating', epoch)
+            logger, val_loader, prompter, 'validating', epoch, base_agg)
         if acc_val > best_acc_val:
             best_acc_val = acc_val
             best_prompter = deepcopy(prompter)

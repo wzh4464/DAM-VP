@@ -3,7 +3,7 @@ File: /aggregation.py
 Created Date: Friday, December 29th, 2023
 Author: Zihan
 -----
-Last Modified: Saturday, 6th January 2024 11:03:56 am
+Last Modified: Saturday, 6th January 2024 5:49:24 pm
 Modified By: the developer formerly known as Zihan at <wzh4464@gmail.com>
 -----
 HISTORY:
@@ -12,6 +12,7 @@ Date      		By   	Comments
 '''
 
 from abc import ABC, abstractmethod
+import time
 import torch
 
 import logging
@@ -44,7 +45,8 @@ class AggregationStrategy(ABC):
         self.logger = logging.getLogger(__name__)
 
     @abstractmethod
-    def update(self, prompter, model, device, adapter):
+    def update(self, cluster_and_rep_list, prototype_list, model, prompter, data_loader, batch_size, device, num_class, mode):
+        # base_agg.update(self.cluster_and_rep_list["testing"], self.prototype_list["training"], self.model, best_prompter, data_loader, self.local_batch_size, self.devicename)
         pass
 
     @abstractmethod
@@ -52,15 +54,9 @@ class AggregationStrategy(ABC):
         pass
 
     @abstractmethod
-    def get_prediction(self, sample, num_classes):
+    def get_prediction(self, index, data_item):
         """
-        Retrieves the prediction based on the given prompted images, model, label, and loss function.
-
-        Args:
-            prompted_images (torch.Tensor): Tensor representing the prompted images.
-            model (torch.nn.Module): The model to use for the forward pass.
-            label (torch.Tensor): Tensor representing the label.
-            loss (torch.nn.Module): The loss function to use.
+        Retrieves the prediction based on multiple aggregation strategies.
 
         Returns:
             torch.Tensor: Tensor representing the prediction.
@@ -171,95 +167,105 @@ class BaseAggregation(AggregationStrategy):
         self.precomputed_logits = None
         self.cluster_norms = None
         self.aggregation_method = None
+        self.cluster_and_rep_list = None
+        self.prototype_list = None
+        self.batch_size = None
+        self.num_class = None
+        self.mode = None
 
-    def update(self, prompter, model, device, adapter):
-        self.prompter = prompter
-        self.model = model
+    def update(self, cluster_and_rep_list, prototype_list, model, prompter, data_loader, batch_size, device, num_class, mode):
+        self.cluster_and_rep_list = cluster_and_rep_list
+        self.prototype_list = prototype_list
+        self.batch_size = batch_size
         self.device = device
-        self.adapter = adapter
-        self.precomputed_reps = self.precompute_reps()
-        self.precomputed_logits = self.precompute_logits()
-        self.cluster_norms = [torch.norm(cluster.sigma) ** 2 if cluster.sigma is not torch.nan else torch.nan for cluster in adapter.cluster_list["training"]]
+        self.num_class = num_class
 
-    def update_from_base(self, base_agg): 
-        self.prompter = base_agg.prompter
-        self.model = base_agg.model
-        self.device = base_agg.device
-        self.adapter = base_agg.adapter
-        self.precomputed_reps = base_agg.precomputed_reps
-        self.precomputed_logits = base_agg.precomputed_logits
-        self.cluster_norms = base_agg.cluster_norms
-        self.aggregation_method = "nearest"
+        self.model = model
+        self.prompter = prompter
+        self.data_loader = data_loader
+        self.mode = mode
 
-    def precompute_reps(self):
-        # 提前计算所有clusters的representation
-        cluster_list = self.adapter.cluster_list["training"]
-        rep_dict = {}
-        for i, cluster in enumerate(cluster_list):
-            image = cluster.sample_image.to(self.device)
-            prompted_images = self.prompter[i](image)
-            image_rep = self.model.forward_features(prompted_images)
-            rep_dict[i] = image_rep
-        return rep_dict
+        self.sigma_list = self.load_sigmas()
+        self.distance_tensor = self.precompute_distances()
+        self.logits_tensor = self.precompute_logits()
 
-    def precompute_logits(self):
-        # 提前计算所有clusters的logits
-        self.precompute_logits = {}
-        for i, rep in self.precomputed_reps.items():
-            logits = self.model.head(rep)
-            self.precompute_logits[i] = logits
+    def update_from_base(self, base_agg):
+        self.distance_tensor = base_agg.distance_tensor
+        self.logits_tensor = base_agg.logits_tensor
+        self.sigma_list = base_agg.sigma_list
 
-    def get_prediction(self, sample, num_classes):
-        logging.info(f"{self.aggregation_method} Aggregation")
+    def load_sigmas(self) -> list[torch.Tensor]:
+        """load sigmas from prototype_list
 
-        cluster_list = self.adapter.cluster_list["training"]
-        counts = None
+        @return sigma_list: [
+            torch.Tensor: [P]
+        ]
+        """
 
-        if torch.cuda.is_available():
-            with torch.no_grad():
-                for i, cluster in enumerate(cluster_list):
-                    counts = self.process_cluster(i, cluster, counts)
+        sigma_list = []
+        for prototype in self.prototype_list:
+            if prototype.sigma is torch.nan:
+                sigma_list.append(torch.nan)
+            else:
+                sigma_list.append(torch.norm(prototype.sigma))
+        return sigma_list
 
-            torch.cuda.synchronize()
-        else:
-            # CPU处理
-            for i, cluster in enumerate(cluster_list):
-                counts = self.process_cluster(i, cluster, counts)
+    def precompute_distances(self) -> list[torch.Tensor]:
+        """提前计算所有batch的到各个prototype的距离矩阵
 
-        # 得到最终预测
-        prediction = torch.argmax(
-            counts, dim=1) if counts is not None else None
+        @return distance_matrix_list: [
+            torch.Tensor: [N, B, P]
+        ]
 
-        return prediction
+        N: number of batches
+        B: batch size
+        P: number of prototypes
+        """
+        begin_dist_time = time.time()
+        distance_matrix = torch.zeros(
+            (self.batch_size, len(self.prototype_list))).to(self.device)
+        for batch_idx, cluster_and_rep in enumerate(self.cluster_and_rep_list):
+            rep = cluster_and_rep.rep
+            prototype_gather = self.prototype_list.prototype_gather
+            distance_matrix[batch_idx] = calculate_distance_matrix(
+                rep, prototype_gather)
+        end_dist_time = time.time()
+        logging.info(
+            f"Time for calculating distance matrix: {end_dist_time - begin_dist_time}")
+        return distance_matrix
 
-    def process_cluster(self, index, cluster, counts):
-        logits = self.precomputed_logits[index]
+    def precompute_logits(self) -> list[torch.Tensor]:
+        """提前计算所有batch在不同prompter下的logits
 
-        if self.aggregation_method == "gaussian":
-            # 计算高斯权重
-            diff = self.precomputed_reps[index] - cluster.prototype
-            norms = self.cluster_norms
-            weights = torch.exp(-torch.sum(diff ** 2,
-                                dim=1) / (2 * norms[index]))
-            logits_weighted = weights.unsqueeze(1) * logits
+        @return logits_tensor: [N, B, P, C]
+        """
+        begin_logits_time = time.time()
+        logits_tensor = torch.zeros(
+            (self.batch_size, len(self.prototype_list), self.num_class)).to(self.device)
+        for batch_idx, cluster_and_rep in enumerate(self.cluster_and_rep_list):
+            rep = cluster_and_rep.rep
+            for prototype_idx, prompter in enumerate(self.prompter):
+                prompted_images = prompter(rep)
+                logits_tensor[batch_idx, prototype_idx] = self.model(
+                    prompted_images)[:, :self.num_class]
+        end_logits_time = time.time()
+        logging.info(
+            f"Time for calculating logits: {end_logits_time - begin_logits_time}")
+        return logits_tensor
 
-        if self.aggregation_method == "majority":
-            logits_weighted = logits
+    def get_prediction(self, index, data_item):
+        """根据不同的聚合策略，返回预测结果
 
-        if self.aggregation_method == "nearest":
-            # 计算距离矩阵
-            distance_matrix = calculate_distance_matrix(
-                self.precomputed_reps[index], cluster.prototype)
-            # 计算最近邻
-            indices = torch.argmin(distance_matrix, dim=-1)
-            logits_weighted = logits[indices]
+        @return prediction: [B]
+        """
+        pass
 
-        else:  # 默认为 majority
-            raise NotImplementedError
+    def cal_prediction(self, weight, logits):
+        """根据weight和logits计算预测结果
 
-        # 加权预测
-        if counts is None:
-            counts = logits_weighted
+        @return prediction: [B]
+        """
+        return torch.argmax(torch.sum(weight.unsqueeze(-1) * logits, dim=1), dim=-1)
 
 
 class nearestAggregation(BaseAggregation):
@@ -267,18 +273,20 @@ class nearestAggregation(BaseAggregation):
         super().__init__()
         self.aggregation_method = "nearest"
 
-    def update(self, prompter, model, device, adapter):
+    def update(self, cluster_and_rep_list, prototype_list, model, prompter, data_loader, batch_size, device, num_class, mode):
         # super().__init__(prompter, model, device, adapter)
-        super().update(prompter, model, device, adapter)
+        super().update(self, cluster_and_rep_list, prototype_list, model,
+                       prompter, data_loader, batch_size, device, num_class, mode)
 
     def update_from_base(self, base_agg):
         return super().update_from_base(base_agg)
 
-    def get_prediction(self, sample, num_classes):
+    def get_prediction(self, index, data_item):
         logging.info(f"{self.aggregation_method} Aggregation")
 
-        # 其他逻辑与 BaseAggregation 相同
-        return super().get_prediction(sample, num_classes)
+        dist_matrix = self.distance_tensor[index]  # [B, P]
+        weight = torch.softmax(-dist_matrix, dim=-1)  # [B, P]
+        return super().cal_prediction(weight, self.logits_tensor[index])
 
 
 class gaussianAggregation(BaseAggregation):
@@ -286,14 +294,23 @@ class gaussianAggregation(BaseAggregation):
         super().__init__()
         self.aggregation_method = "gaussian"
 
-    def update(self, prompter, model, device, adapter):
-        super().update(prompter, model, device, adapter)
+    def update(self, cluster_and_rep_list, prototype_list, model, prompter, data_loader, batch_size, device, num_class, mode):
+        super().update(self, cluster_and_rep_list, prototype_list, model,
+                       prompter, data_loader, batch_size, device, num_class, mode)
 
     def update_from_base(self, base_agg):
         return super().update_from_base(base_agg)
 
-    def get_prediction(self, sample, num_classes):
-        return super().get_prediction(sample, num_classes)
+    def get_prediction(self, index, data_item):
+        logging.info(f"{self.aggregation_method} Aggregation")
+
+        # weight[i][j] = exp(-dist_matrix[i][j] / sigma[j])
+
+        dist_matrix = self.distance_tensor[index].to(self.device)  # [B, P]
+        sigma = torch.stack(self.sigma_list).to(self.device)  # [P]
+        weight = torch.exp(-dist_matrix / sigma)  # [B, P]
+        weight = weight / torch.sum(weight, dim=-1, keepdim=True)
+        return super().cal_prediction(weight, self.logits_tensor[index])
 
 
 class majorityAggregation(BaseAggregation):
@@ -301,11 +318,14 @@ class majorityAggregation(BaseAggregation):
         super().__init__()
         self.aggregation_method = "majority"
 
-    def update(self, prompter, model, device, adapter):
-        super().update(prompter, model, device, adapter)
+    def update(self, cluster_and_rep_list, prototype_list, model, prompter, data_loader, batch_size, device, num_class, mode):
+        super().update(self, cluster_and_rep_list, prototype_list, model,
+                       prompter, data_loader, batch_size, device, num_class, mode)
 
     def update_from_base(self, base_agg):
         return super().update_from_base(base_agg)
 
-    def get_prediction(self, sample, num_classes):
-        super().get_prediction(sample, num_classes)
+    def get_prediction(self, index, data_item):
+        weight = torch.ones(
+            (self.batch_size, len(self.prototype_list))).to(self.device) / len(self.prototype_list)
+        return super().cal_prediction(weight, self.logits_tensor[index])
