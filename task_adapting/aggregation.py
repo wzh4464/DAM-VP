@@ -3,7 +3,7 @@ File: /aggregation.py
 Created Date: Friday, December 29th, 2023
 Author: Zihan
 -----
-Last Modified: Saturday, 6th January 2024 10:33:03 am
+Last Modified: Saturday, 6th January 2024 11:03:56 am
 Modified By: the developer formerly known as Zihan at <wzh4464@gmail.com>
 -----
 HISTORY:
@@ -45,6 +45,10 @@ class AggregationStrategy(ABC):
 
     @abstractmethod
     def update(self, prompter, model, device, adapter):
+        pass
+
+    @abstractmethod
+    def update_from_base(self, base_agg):
         pass
 
     @abstractmethod
@@ -177,6 +181,15 @@ class BaseAggregation(AggregationStrategy):
         self.precomputed_logits = self.precompute_logits()
         self.cluster_norms = [torch.norm(cluster.sigma) ** 2 if cluster.sigma is not torch.nan else torch.nan for cluster in adapter.cluster_list["training"]]
 
+    def update_from_base(self, base_agg): 
+        self.prompter = base_agg.prompter
+        self.model = base_agg.model
+        self.device = base_agg.device
+        self.adapter = base_agg.adapter
+        self.precomputed_reps = base_agg.precomputed_reps
+        self.precomputed_logits = base_agg.precomputed_logits
+        self.cluster_norms = base_agg.cluster_norms
+        self.aggregation_method = "nearest"
 
     def precompute_reps(self):
         # 提前计算所有clusters的representation
@@ -258,6 +271,9 @@ class nearestAggregation(BaseAggregation):
         # super().__init__(prompter, model, device, adapter)
         super().update(prompter, model, device, adapter)
 
+    def update_from_base(self, base_agg):
+        return super().update_from_base(base_agg)
+
     def get_prediction(self, sample, num_classes):
         logging.info(f"{self.aggregation_method} Aggregation")
 
@@ -270,6 +286,12 @@ class gaussianAggregation(BaseAggregation):
         super().__init__()
         self.aggregation_method = "gaussian"
 
+    def update(self, prompter, model, device, adapter):
+        super().update(prompter, model, device, adapter)
+
+    def update_from_base(self, base_agg):
+        return super().update_from_base(base_agg)
+
     def get_prediction(self, sample, num_classes):
         return super().get_prediction(sample, num_classes)
 
@@ -278,6 +300,12 @@ class majorityAggregation(BaseAggregation):
     def __init__(self) -> None:
         super().__init__()
         self.aggregation_method = "majority"
+
+    def update(self, prompter, model, device, adapter):
+        super().update(prompter, model, device, adapter)
+
+    def update_from_base(self, base_agg):
+        return super().update_from_base(base_agg)
 
     def get_prediction(self, sample, num_classes):
         super().get_prediction(sample, num_classes)

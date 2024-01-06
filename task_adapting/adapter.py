@@ -26,7 +26,7 @@ from utils.train_utils import cosine_lr
 import utils.logging as logGing
 
 from arguments import Arguments
-from aggregation import AggregationStrategy, nearestAggregation
+from aggregation import AggregationStrategy, BaseAggregation, nearestAggregation
 from cluster_and_rep import ClusterAndRepList, ProtoTypeList
 
 
@@ -516,9 +516,6 @@ class Adapter(object):
             #     f"type of data_loader: {type(data_loader)} in evaluate")
             if mode == 'testing':
                 testingAggregator = self.aggregation_strategy
-                testingAggregator.update(
-                    prompter, self.model, self.devicename, self
-                )
                 pred = testingAggregator.get_prediction(
                     sample, prompter, self.model, self.devicename, len(
                         data_loader.dataset.classes), self
@@ -545,8 +542,11 @@ class Adapter(object):
 
     def make_test(self, logger, test_loader, epoch, best_prompter) -> float:
         logging.info("Testing")
+        base_agg = BaseAggregation()
+        base_agg.update(best_prompter, self.model, self.devicename, self)
         for strategy in self.aggregation_strategy_list:
             logger.info(f"Testing with {strategy.__class__.__name__}")
+            strategy.update_from_base(base_agg)
             self.aggregation_strategy = strategy
             self.aggregation_strategy_name = strategy.__class__.__name__
             acc_test = self.evaluate(
