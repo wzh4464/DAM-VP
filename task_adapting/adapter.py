@@ -518,7 +518,7 @@ class Adapter(object):
     def evaluate(self, logger: logging.Logger, data_loader: DataLoader, prompter: list[
             prompters.PadPrompter | prompters.FixedPatchPrompter | prompters.RandomPatchPrompter], mode: str, epoch: int, base_agg = None) -> float:
         num_total, correct = 0, 0
-        begin_time = time.time()
+        # begin_time = time.time()
         for i, sample in enumerate(data_loader):
             # sample is a dict
             # add an attribute "epoch" to it as i
@@ -546,30 +546,35 @@ class Adapter(object):
             correct += (pred == label).sum().item()
             num_total += sample["image"].size(0)
         acc = float(correct / num_total)
-        logger.info(
-            f"[Prompt {mode.capitalize()}] Epoch: {epoch}, {mode} acc: {acc}, device: {self.devicename}")
-        # time
-        logger.info(
-            f"Time consuming of {mode} (seconds): {time.time() - begin_time} for {self.aggregation_strategy_name}")
+        # logger.info(
+        #     f"[Prompt {mode.capitalize()}] Epoch: {epoch}, {mode} acc: {acc}, device: {self.devicename}")
+        # # time
+        # logger.info(
+        #     f"Time consuming of {mode} (seconds): {time.time() - begin_time} for {self.aggregation_strategy_name}")
         return acc
 
     def make_test(self, logger, test_loader, epoch, best_prompter) -> float:
-        logging.info("Testing")
+        self.logger.info("Testing")
         base_agg = BaseAggregation()
-        base_agg.update(self.cluster_and_rep_list["testing"], self.prototype_list["training"], self.model, best_prompter, test_loader, self.local_batch_size, self.devicename, len(test_loader.dataset.classes))
+        base_agg.update(
+            self.cluster_and_rep_list["testing"], self.prototype_list["training"], self.model, \
+                best_prompter, test_loader, self.local_batch_size, self.devicename, len(test_loader.dataset.classes), mode="testing",\
+                logger=logger, out_path=self.args.output_dir)
         for strategy in self.aggregation_strategy_list:
             logger.info(f"Testing with {strategy.__class__.__name__}")
+            begin_time = time.time()
             strategy.update_from_base(base_agg)
             self.aggregation_strategy = strategy
             self.aggregation_strategy_name = strategy.__class__.__name__
             acc_test = self.evaluate(
                 logger, test_loader, best_prompter, 'testing', epoch, base_agg)
+            logger.info(f"[Testing]Test acc: {acc_test}, Time consuming {time.time() - begin_time} for {self.aggregation_strategy_name} in device {self.devicename}")
         return acc_test
 
     def make_validation(self, logger, val_loader, prompter, best_prompter, best_acc_val, epoch) -> tuple[float, prompters.PadPrompter | prompters.FixedPatchPrompter | prompters.RandomPatchPrompter]:
         self.aggregation_strategy_name = "nearestAggregation"
         base_agg = BaseAggregation()
-        base_agg.update(self.cluster_and_rep_list["validating"], self.prototype_list["training"], self.model, prompter, val_loader, self.local_batch_size, self.devicename, len(val_loader.dataset.classes))
+        base_agg.update(self.cluster_and_rep_list["validating"], self.prototype_list["training"], self.model, prompter, val_loader, self.local_batch_size, self.devicename, len(val_loader.dataset.classes), mode="validating")
         self.strategy = nearestAggregation()
         acc_val = self.evaluate(
             logger, val_loader, prompter, 'validating', epoch, base_agg)
