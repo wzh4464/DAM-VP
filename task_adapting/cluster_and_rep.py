@@ -3,7 +3,7 @@ File: /cluster_and_rep.py
 Created Date: Monday January 1st 2024
 Author: Zihan
 -----
-Last Modified: Friday, 5th January 2024 11:28:34 pm
+Last Modified: Saturday, 6th January 2024 10:40:42 am
 Modified By: the developer formerly known as Zihan at <wzh4464@gmail.com>
 -----
 HISTORY:
@@ -16,7 +16,31 @@ import logging
 
 
 class ClusterAndRep:
+    """Cluster and representation of an image batch.
+
+    Members:
+        cluster: cluster index of the image
+        rep: representation of the image
+
+    Way to use:
+        cluster_and_rep = ClusterAndRep(image, adapter)
+        cluster_and_rep.cluster : torch.Tensor [batch_size]
+        cluster_and_rep.rep : torch.Tensor [batch_size, rep_dim]
+        cluster_and_rep[index_in_batch] : ClusterAndRepItem
+        cluster_and_rep[index_in_batch].cluster : torch.Tensor [1]
+        cluster_and_rep[index_in_batch].rep : torch.Tensor [rep_dim]
+
+    Iterable.
+    """
+    
     class ClusterAndRepItem:
+        """Cluster and representation of an image.
+
+        Members:
+            cluster: cluster index of the image [1]
+            rep: representation of the image [rep_dim]
+        """
+
         def __init__(self, cluster, rep):
             self.cluster = cluster
             self.rep = rep
@@ -61,6 +85,17 @@ class ClusterAndRep:
 
 
 class ClusterAndRepList:
+    """List of ClusterAndRep.
+
+    Members:
+        cluster_and_rep_list: list of ClusterAndRep
+
+    Way to use:
+        cluster_and_rep_list = ClusterAndRepList(path, dataset, adapter)
+        cluster_and_rep_list[bath_index] : ClusterAndRep
+        cluster_and_rep_list[bath_index][index_in_batch] : ClusterAndRepItem (with cluster [1] and rep [rep_dim])
+    Iterable.
+    """
     def __init__(self, path, dataset, adapter, renew=False):
         self.index = 0
         if not renew and os.path.exists(f"{path}_devicename_{adapter.devicename}.pth"):
@@ -159,6 +194,24 @@ class ProtoType:
 
 
 class ProtoTypeList:
+    """List of ProtoType.
+
+    Members:
+        prototype_list: list of ProtoType
+
+    Way to use:
+        prototype_list = ProtoTypeList(prototype_gather, cluster_and_rep_list)
+        prototype_list[label] : ProtoType
+        prototype_list[label].prototype : torch.Tensor [1, rep_dim]
+        prototype_list[label].label : int
+        prototype_list[label].items : [
+                    {
+                        "batch_index": int,
+                        "index_in_batch": int
+                    }
+                ]
+        prototype_list[label].sigma : torch.Tensor [rep_dim]
+    """
     def __init__(self, prototype_gather, cluster_and_rep_list: ClusterAndRepList):
         self.prototype_gather = prototype_gather
         self.prototype_list = [

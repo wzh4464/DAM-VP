@@ -3,7 +3,7 @@ File: /aggregation.py
 Created Date: Friday, December 29th, 2023
 Author: Zihan
 -----
-Last Modified: Saturday, 6th January 2024 1:37:45 am
+Last Modified: Saturday, 6th January 2024 10:33:03 am
 Modified By: the developer formerly known as Zihan at <wzh4464@gmail.com>
 -----
 HISTORY:
@@ -166,6 +166,7 @@ class BaseAggregation(AggregationStrategy):
         self.precomputed_reps = None
         self.precomputed_logits = None
         self.cluster_norms = None
+        self.aggregation_method = None
 
     def update(self, prompter, model, device, adapter):
         self.prompter = prompter
