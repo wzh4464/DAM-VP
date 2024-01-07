@@ -530,6 +530,7 @@ class Adapter(object):
             if mode == 'testing':
                 testingAggregator = self.aggregation_strategy
                 testingAggregator.update_from_base(base_agg)
+                testingAggregator.get_actual_batch_size(sample)
                 pred = testingAggregator.get_prediction(i)
             elif mode == 'validating':
                 validationAggregator = nearestAggregation()

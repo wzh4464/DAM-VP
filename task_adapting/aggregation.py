@@ -3,7 +3,7 @@ File: /aggregation.py
 Created Date: Friday, December 29th, 2023
 Author: Zihan
 -----
-Last Modified: Sunday, 7th January 2024 9:51:49 am
+Last Modified: Sunday, 7th January 2024 1:06:52 pm
 Modified By: the developer formerly known as Zihan at <wzh4464@gmail.com>
 -----
 HISTORY:
@@ -58,6 +58,20 @@ class AggregationStrategy(ABC):
 
         Returns:
             torch.Tensor: Tensor representing the prediction.
+
+        """
+        pass
+
+    @abstractmethod
+    def get_actual_batch_size(self, sample):
+        """
+        Retrieves the actual batch size of the given sample.
+
+        Args:
+            sample (dict): Dictionary containing the sample.
+
+        Returns:
+            int: Integer representing the actual batch size.
 
         """
         pass
@@ -117,16 +131,22 @@ class BaseAggregation(AggregationStrategy):
         self.data_loader = data_loader
         self.mode = mode
 
+        self.num_cluster = len(self.prototype_list)
+
         with torch.no_grad():
             self.sigma_list = self.load_sigmas()
-            self.distance_tensor = self.precompute_distances()
-            self.logits_tensor = self.precompute_logits()
+            self.distance_list = self.precompute_distances()
+            self.logits_list = self.precompute_logits()
 
     def update_from_base(self, base_agg):
-        self.distance_tensor = base_agg.distance_tensor
-        self.logits_tensor = base_agg.logits_tensor
+        self.distance_list = base_agg.distance_list
+        self.logits_list = base_agg.logits_list
         self.sigma_list = base_agg.sigma_list
         self.logger = base_agg.logger
+        self.batch_size = base_agg.batch_size
+        self.device = base_agg.device
+        self.num_class = base_agg.num_class
+        self.num_cluster = base_agg.num_cluster
 
     def load_sigmas(self, renew=False) -> list[torch.Tensor]:
         """load sigmas from prototype_list
@@ -160,7 +180,7 @@ class BaseAggregation(AggregationStrategy):
         B: batch size
         P: number of prototypes
         """
-
+        # renew = True
         path = f"{self.out_path}/distance_matrix_{self.device}.pth"
         if not renew and os.path.exists(path):
             self.logger.info(f"Loading distance matrix from {path}")
@@ -196,7 +216,7 @@ class BaseAggregation(AggregationStrategy):
 
         @return logits_tensor: [N, B, P, C]
         """
-
+        # renew = True
         path = f"{self.out_path}/logits_tensor_{self.device}.pth"
         if not renew and os.path.exists(path):
             self.logger.info(f"Loading logits tensor from {path}")
@@ -205,16 +225,23 @@ class BaseAggregation(AggregationStrategy):
         begin_logits_time = time.time()
         # 初始化一个空的列表来存储每个批次的logits
         logits_list = []
+        batch_num = len(self.cluster_and_rep_list)
+        prototype_num = len(self.prototype_list)
+        class_num = self.num_class
         for data in self.data_loader:
             image = data['image'].to(self.device)
-            # 创建当前批次的logits张量
-            for prompter in self.prompter:
-                prompted_images = prompter(image)
-                batch_logits_tensor = self.model(prompted_images)[
-                    :, :self.num_class]
-                del prompted_images
-            # 将当前批次的logits添加到列表中
-            logits_list.append(batch_logits_tensor)
+            actual_batch_size = image.size(0)
+            # 根据实际大小创建logits
+            # [P, B, C]
+            batch_logits = torch.zeros((prototype_num, actual_batch_size, class_num)).to(self.device)
+            for i, prompter in enumerate(self.prompter):
+                # [P, B, C]
+                batch_logits[i] = self.model(prompter(image))[:, :class_num]
+            # 将计算得到的logits添加到列表中
+            logits_list.append(batch_logits.permute(1, 0, 2)) # [B, P, C]
+
+            del image, batch_logits
+
         return self.info_and_save(
             'Time for calculating logits: ',
             begin_logits_time,
@@ -222,13 +249,15 @@ class BaseAggregation(AggregationStrategy):
             '/logits_tensor_',
         )
 
-    def info_and_save(self, arg0, arg1, arg2, arg3):
+    def info_and_save(self, str_time_for, begin_time, save_list, save_name):
         end_dist_time = time.time()
-        self.logger.info(f"{arg0}{end_dist_time - arg1} for device {self.device}")
-        distance_matrix = torch.cat(arg2, dim=0)
-        torch.save(distance_matrix, f"{self.out_path}{arg3}{self.device}.pth")
-        del arg2
-        return distance_matrix
+        self.logger.info(
+            f"{str_time_for}{end_dist_time - begin_time} for device {self.device}")
+        
+        # save list, list item is tensor
+        torch.save(save_list, f"{self.out_path}{save_name}{self.device}.pth")
+
+        return save_list
 
     def get_prediction(self, index):
         """根据不同的聚合策略，返回预测结果
@@ -243,6 +272,10 @@ class BaseAggregation(AggregationStrategy):
         @return prediction: [B]
         """
         return torch.argmax(torch.sum(weight.unsqueeze(-1) * logits, dim=1), dim=-1)
+
+    def get_actual_batch_size(self, sample):
+        self.actual_batch_size = sample['image'].size(0)
+        return self.actual_batch_size
 
 
 class nearestAggregation(BaseAggregation):
@@ -259,14 +292,14 @@ class nearestAggregation(BaseAggregation):
         return super().update_from_base(base_agg)
 
     def get_prediction(self, index):
-        self.logger.info(f"{self.aggregation_method} Aggregation")
+        # self.logger.info(f"{self.aggregation_method} Aggregation")
         begin_time = time.time()
-        dist_matrix = self.distance_tensor[index].to(self.device)  # [B, P]
+        dist_matrix = self.distance_list[index].to(self.device)  # [B, P]
         weight = torch.softmax(-dist_matrix, dim=-1)  # [B, P]
         res = super().cal_prediction(
-            weight, self.logits_tensor[index].to(self.device))
-        self.logger.info(
-            f"Time for calculating prediction: {time.time() - begin_time} by nearest aggregation for device {self.device}")
+            weight, self.logits_list[index].to(self.device))
+        # self.logger.info(
+        #     f"Time for calculating prediction: {time.time() - begin_time} by nearest aggregation for device {self.device}")
 
         return res
 
@@ -284,19 +317,19 @@ class gaussianAggregation(BaseAggregation):
         return super().update_from_base(base_agg)
 
     def get_prediction(self, index):
-        self.logger.info(f"{self.aggregation_method} Aggregation")
+        # self.logger.info(f"{self.aggregation_method} Aggregation")
 
         # weight[i][j] = exp(-dist_matrix[i][j] / sigma[j])
         begin_time = time.time()
-        dist_matrix = self.distance_tensor[index].to(
+        dist_matrix = self.distance_list[index].to(
             self.device).to(self.device)  # [B, P]
         sigma = torch.stack(self.sigma_list).to(self.device)  # [P]
         weight = torch.exp(-dist_matrix / sigma)  # [B, P]
         weight = weight / torch.sum(weight, dim=-1, keepdim=True)
         res = super().cal_prediction(
-            weight, self.logits_tensor[index].to(self.device))
-        self.logger.info(
-            f"Time for calculating prediction: {time.time() - begin_time} by gaussian aggregation for device {self.device}")
+            weight, self.logits_list[index].to(self.device))
+        # self.logger.info(
+        #     f"Time for calculating prediction: {time.time() - begin_time} by gaussian aggregation for device {self.device}")
 
         return res
 
@@ -315,13 +348,19 @@ class majorityAggregation(BaseAggregation):
 
     def get_prediction(self, index):
 
-        self.logger.info(f"{self.aggregation_method} Aggregation")
+        # self.logger.info(f"{self.aggregation_method} Aggregation")
+        num_cluster = self.num_cluster
         begin_time = time.time()
+        actual_batch_size = self.actual_batch_size
+
         weight = torch.ones(
-            (self.batch_size, len(self.prototype_list))).to(self.device) / len(self.prototype_list)
+            (actual_batch_size, num_cluster)).to(self.device) / num_cluster
+
         res = super().cal_prediction(
-            weight, self.logits_tensor[index].to(self.device))
-        self.logger.info(
-            f"Time for calculating prediction: {time.time() - begin_time} by majority aggregation for device {self.device}")
+            weight, self.logits_list[index].to(self.device))
+
+
+        # self.logger.info(
+        #     f"Time for calculating prediction: {time.time() - begin_time} by majority aggregation for device {self.device}")
 
         return res
