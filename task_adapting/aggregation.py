@@ -3,7 +3,7 @@ File: /aggregation.py
 Created Date: Friday, December 29th, 2023
 Author: Zihan
 -----
-Last Modified: Sunday, 7th January 2024 1:06:52 pm
+Last Modified: Sunday, 7th January 2024 3:41:43 pm
 Modified By: the developer formerly known as Zihan at <wzh4464@gmail.com>
 -----
 HISTORY:
@@ -134,9 +134,11 @@ class BaseAggregation(AggregationStrategy):
         self.num_cluster = len(self.prototype_list)
 
         with torch.no_grad():
-            self.sigma_list = self.load_sigmas()
-            self.distance_list = self.precompute_distances()
-            self.logits_list = self.precompute_logits()
+            renew = False
+            # renew = True
+            self.sigma_list = self.load_sigmas(renew)
+            self.distance_list = self.precompute_distances(renew)
+            self.logits_list = self.precompute_logits(renew)
 
     def update_from_base(self, base_agg):
         self.distance_list = base_agg.distance_list
@@ -231,16 +233,11 @@ class BaseAggregation(AggregationStrategy):
         for data in self.data_loader:
             image = data['image'].to(self.device)
             actual_batch_size = image.size(0)
-            # 根据实际大小创建logits
-            # [P, B, C]
-            batch_logits = torch.zeros((prototype_num, actual_batch_size, class_num)).to(self.device)
-            for i, prompter in enumerate(self.prompter):
-                # [P, B, C]
-                batch_logits[i] = self.model(prompter(image))[:, :class_num]
+            batch_logits_list = [self.model(prompter(image)) for prompter in self.prompter]
             # 将计算得到的logits添加到列表中
-            logits_list.append(batch_logits.permute(1, 0, 2)) # [B, P, C]
+            logits_list.append(torch.stack(batch_logits_list).permute(1, 0, 2))
 
-            del image, batch_logits
+            del image, batch_logits_list
 
         return self.info_and_save(
             'Time for calculating logits: ',

@@ -376,12 +376,16 @@ class Adapter(object):
         train_loader_len = len(train_loader)
 
         prompter = self.load_prompter(prompter_path)
+        num_classes = data_loader._dataset_class_num(self.args.test_dataset)
+        self.model.reset_classifier(num_classes)
+        self.model.get_classifier().to(self.devicename)
 
         begin_time_cluster = time.time()
 
         if not self.args.wo_da:
             coarse_cocluster_path = f"{self.args.output_dir}/coarse_cluster_{self.args.test_dataset}_device_{self.devicename}.pth"
             coarse_renew: bool = False
+            # coarse_renew: bool = True
 
             if (coarse_renew or not os.path.exists(coarse_cocluster_path)):
                 self.coarse_clustering(train_loader)
@@ -516,7 +520,7 @@ class Adapter(object):
         return False
 
     def evaluate(self, logger: logging.Logger, data_loader: DataLoader, prompter: list[
-            prompters.PadPrompter | prompters.FixedPatchPrompter | prompters.RandomPatchPrompter], mode: str, epoch: int, base_agg = None) -> float:
+            prompters.PadPrompter | prompters.FixedPatchPrompter | prompters.RandomPatchPrompter], mode: str, epoch: int, base_agg=None) -> float:
         num_total, correct = 0, 0
         # begin_time = time.time()
         for i, sample in enumerate(data_loader):
@@ -548,9 +552,9 @@ class Adapter(object):
         self.logger.info("Testing")
         base_agg = BaseAggregation()
         base_agg.update(
-            self.cluster_and_rep_list["testing"], self.prototype_list["training"], self.model, \
-                best_prompter, test_loader, self.local_batch_size, self.devicename, len(test_loader.dataset.classes), mode="testing",\
-                logger=logger, out_path=self.args.output_dir)
+            self.cluster_and_rep_list["testing"], self.prototype_list["training"], self.model,
+            best_prompter, test_loader, self.local_batch_size, self.devicename, len(test_loader.dataset.classes), mode="testing",
+            logger=logger, out_path=self.args.output_dir)
         for strategy in self.aggregation_strategy_list:
             logger.info(f"Testing with {strategy.__class__.__name__}")
             begin_time = time.time()
@@ -559,16 +563,21 @@ class Adapter(object):
             self.aggregation_strategy_name = strategy.__class__.__name__
             acc_test = self.evaluate(
                 logger, test_loader, best_prompter, 'testing', epoch, base_agg)
-            logger.info(f"[Testing]Test acc: {acc_test}, Time consuming {time.time() - begin_time} for {self.aggregation_strategy_name} in device {self.devicename}")
+            logger.info(
+                f"[Testing]Test acc: {acc_test}, Time consuming {time.time() - begin_time} for {self.aggregation_strategy_name} in device {self.devicename}")
         return acc_test
 
     def make_validation(self, logger, val_loader, prompter, best_prompter, best_acc_val, epoch) -> tuple[float, prompters.PadPrompter | prompters.FixedPatchPrompter | prompters.RandomPatchPrompter]:
-        self.aggregation_strategy_name = "nearestAggregation"
-        base_agg = BaseAggregation()
-        base_agg.update(self.cluster_and_rep_list["validating"], self.prototype_list["training"], self.model, prompter, val_loader, self.local_batch_size, self.devicename, len(val_loader.dataset.classes), mode="validating")
-        self.strategy = nearestAggregation()
-        acc_val = self.evaluate(
-            logger, val_loader, prompter, 'validating', epoch, base_agg)
+        logger.info(f"[Prompt Finetuning] Validating: epoch {epoch}")
+        correct = 0
+        for ind, sample in enumerate(val_loader):
+            prompted_images = self.get_prompted_image_train(
+                ind, sample, prompter)
+            pred = torch.argmax(self.model(prompted_images), dim=-1)
+            correct += (pred ==
+                        sample["label"].to(self.devicename)).sum().item()
+        num_total = sample["image"].size(0)
+        acc_val = float(correct / num_total)
         if acc_val > best_acc_val:
             best_acc_val = acc_val
             best_prompter = deepcopy(prompter)
@@ -628,18 +637,19 @@ class Adapter(object):
 
         # label with cluster result
         for epoch in range(self.args.epochs):
-            # # train
-            # skip = self.training_part(logger, train_loader, prompter_gather,
-            #                           optimizer, scheduler, epoch)
+            # train
+            skip = self.training_part(logger, train_loader, prompter_gather,
+                                      optimizer, scheduler, epoch)
 
-            # if skip:
-            #     continue
+            if skip:
+                continue
 
-            # # validate
-            # [BEST_ACC_VAL, best_prompter_gather] = self.make_validation(
-            #     logger, val_loader, prompter_gather, best_prompter_gather, BEST_ACC_VAL, epoch)
+            # validate
+            [BEST_ACC_VAL, best_prompter_gather] = self.make_validation(
+                logger, val_loader, prompter_gather, best_prompter_gather, BEST_ACC_VAL, epoch)
+
             # test
-            epoch = self.args.epochs - 1
+            # epoch = self.args.epochs - 1
             if epoch == self.args.epochs - 1:
                 acc_test = self.make_test(
                     logger, test_loader, epoch, best_prompter_gather)
@@ -650,7 +660,7 @@ class Adapter(object):
         logger, train_loader, val_loader, test_loader, best_prompter, optimizer, scheduler \
             = self.init_with_head(test_data, prompters_path)
         self.training_part(logger, train_loader, best_prompter,
-                           optimizer, scheduler, 0)
+                           optimizer, scheduler, 0, renew=True)
         torch.save({
             "prompters": best_prompter.state_dict()
         }, os.path.join(path, f"device_{self.devicename}.pth"))
