@@ -3,7 +3,7 @@ File: /aggregation.py
 Created Date: Friday, December 29th, 2023
 Author: Zihan
 -----
-Last Modified: Sunday, 7th January 2024 9:49:32 am
+Last Modified: Sunday, 7th January 2024 9:51:49 am
 Modified By: the developer formerly known as Zihan at <wzh4464@gmail.com>
 -----
 HISTORY:
@@ -52,7 +52,7 @@ class AggregationStrategy(ABC):
         pass
 
     @abstractmethod
-    def get_prediction(self, index, data_item):
+    def get_prediction(self, index):
         """
         Retrieves the prediction based on multiple aggregation strategies.
 
@@ -230,7 +230,7 @@ class BaseAggregation(AggregationStrategy):
         del arg2
         return distance_matrix
 
-    def get_prediction(self, index, data_item):
+    def get_prediction(self, index):
         """根据不同的聚合策略，返回预测结果
 
         @return prediction: [B]
@@ -258,7 +258,7 @@ class nearestAggregation(BaseAggregation):
     def update_from_base(self, base_agg):
         return super().update_from_base(base_agg)
 
-    def get_prediction(self, index, data_item):
+    def get_prediction(self, index):
         self.logger.info(f"{self.aggregation_method} Aggregation")
         begin_time = time.time()
         dist_matrix = self.distance_tensor[index].to(self.device)  # [B, P]
@@ -283,7 +283,7 @@ class gaussianAggregation(BaseAggregation):
     def update_from_base(self, base_agg):
         return super().update_from_base(base_agg)
 
-    def get_prediction(self, index, data_item):
+    def get_prediction(self, index):
         self.logger.info(f"{self.aggregation_method} Aggregation")
 
         # weight[i][j] = exp(-dist_matrix[i][j] / sigma[j])
@@ -313,7 +313,7 @@ class majorityAggregation(BaseAggregation):
     def update_from_base(self, base_agg):
         return super().update_from_base(base_agg)
 
-    def get_prediction(self, index, data_item):
+    def get_prediction(self, index):
 
         self.logger.info(f"{self.aggregation_method} Aggregation")
         begin_time = time.time()

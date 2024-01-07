@@ -530,28 +530,18 @@ class Adapter(object):
             if mode == 'testing':
                 testingAggregator = self.aggregation_strategy
                 testingAggregator.update_from_base(base_agg)
-                pred = testingAggregator.get_prediction(
-                    i, sample
-                )
+                pred = testingAggregator.get_prediction(i)
             elif mode == 'validating':
                 validationAggregator = nearestAggregation()
                 validationAggregator.update(
                     prompter, self.model, self.devicename, self
                 )
-                pred = validationAggregator.get_prediction(
-                    sample, len(data_loader.dataset.classes)
-                )
+                pred = validationAggregator.get_prediction(i)
             else:
                 raise NotImplementedError
             correct += (pred == label).sum().item()
             num_total += sample["image"].size(0)
-        acc = float(correct / num_total)
-        # logger.info(
-        #     f"[Prompt {mode.capitalize()}] Epoch: {epoch}, {mode} acc: {acc}, device: {self.devicename}")
-        # # time
-        # logger.info(
-        #     f"Time consuming of {mode} (seconds): {time.time() - begin_time} for {self.aggregation_strategy_name}")
-        return acc
+        return float(correct / num_total)
 
     def make_test(self, logger, test_loader, epoch, best_prompter) -> float:
         self.logger.info("Testing")
