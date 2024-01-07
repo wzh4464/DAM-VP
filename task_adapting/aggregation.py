@@ -3,7 +3,7 @@ File: /aggregation.py
 Created Date: Friday, December 29th, 2023
 Author: Zihan
 -----
-Last Modified: Saturday, 6th January 2024 11:31:46 pm
+Last Modified: Sunday, 7th January 2024 9:47:16 am
 Modified By: the developer formerly known as Zihan at <wzh4464@gmail.com>
 -----
 HISTORY:
@@ -12,6 +12,7 @@ Date      		By   	Comments
 '''
 
 from abc import ABC, abstractmethod
+import os
 import time
 import torch
 
@@ -84,6 +85,7 @@ def calculate_distance_matrix(rep_batch, prototype_gather):
         - 2 * torch.mm(rep_batch, prototype_gather.T)
     )
 
+
 class BaseAggregation(AggregationStrategy):
     def __init__(self) -> None:
         super().__init__()
@@ -126,13 +128,18 @@ class BaseAggregation(AggregationStrategy):
         self.sigma_list = base_agg.sigma_list
         self.logger = base_agg.logger
 
-    def load_sigmas(self) -> list[torch.Tensor]:
+    def load_sigmas(self, renew=False) -> list[torch.Tensor]:
         """load sigmas from prototype_list
 
         @return sigma_list: [
             torch.Tensor: [P]
         ]
         """
+
+        path = f"{self.out_path}/sigma_list_{self.device}.pth"
+        if not renew and os.path.exists(path):
+            self.logger.info(f"Loading sigma list from {path}")
+            return torch.load(path)
 
         sigma_list = []
         for prototype in self.prototype_list:
@@ -142,7 +149,7 @@ class BaseAggregation(AggregationStrategy):
                 sigma_list.append(torch.norm(prototype.sigma))
         return sigma_list
 
-    def precompute_distances(self) -> list[torch.Tensor]:
+    def precompute_distances(self, renew=False) -> list[torch.Tensor]:
         """提前计算所有batch的到各个prototype的距离矩阵
 
         @return distance_matrix_list: [
@@ -153,10 +160,16 @@ class BaseAggregation(AggregationStrategy):
         B: batch size
         P: number of prototypes
         """
+
+        path = f"{self.out_path}/distance_matrix_{self.device}.pth"
+        if not renew and os.path.exists(path):
+            self.logger.info(f"Loading distance matrix from {path}")
+            return torch.load(path)
+
         begin_dist_time = time.time()
         # 初始化一个空的列表来存储每个批次的距离矩阵
         distance_matrix_list = []
-        for batch_idx, (cluster_and_rep, data) in enumerate(zip(self.cluster_and_rep_list, self.data_loader)):
+        for cluster_and_rep, data in zip(self.cluster_and_rep_list, self.data_loader):
             rep = cluster_and_rep.rep
             prototype_gather = self.prototype_list.prototype_gather
             # 获取当前批次的实际大小
@@ -181,18 +194,24 @@ class BaseAggregation(AggregationStrategy):
         del distance_matrix_list
         return distance_matrix
 
-    def precompute_logits(self) -> list[torch.Tensor]:
+    def precompute_logits(self, renew=False) -> list[torch.Tensor]:
         """提前计算所有batch在不同prompter下的logits
 
         @return logits_tensor: [N, B, P, C]
         """
+
+        path = f"{self.out_path}/logits_tensor_{self.device}.pth"
+        if not renew and os.path.exists(path):
+            self.logger.info(f"Loading logits tensor from {path}")
+            return torch.load(path)
+
         begin_logits_time = time.time()
         # 初始化一个空的列表来存储每个批次的logits
         logits_list = []
-        for batch_idx, data in enumerate(self.data_loader):
+        for data in self.data_loader:
             image = data['image'].to(self.device)
             # 创建当前批次的logits张量
-            for prototype_idx, prompter in enumerate(self.prompter):
+            for prompter in self.prompter:
                 prompted_images = prompter(image)
                 batch_logits_tensor = self.model(prompted_images)[
                     :, :self.num_class]
