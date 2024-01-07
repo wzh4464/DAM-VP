@@ -3,7 +3,7 @@ File: /aggregation.py
 Created Date: Friday, December 29th, 2023
 Author: Zihan
 -----
-Last Modified: Sunday, 7th January 2024 9:47:16 am
+Last Modified: Sunday, 7th January 2024 9:49:32 am
 Modified By: the developer formerly known as Zihan at <wzh4464@gmail.com>
 -----
 HISTORY:
@@ -184,15 +184,12 @@ class BaseAggregation(AggregationStrategy):
 
             del rep, prototype_gather, batch_distance_matrix
 
-        end_dist_time = time.time()
-        self.logger.info(
-            f"Time for calculating distance matrix: {end_dist_time - begin_dist_time} for device {self.device}")
-        # 将列表转换为张量
-        distance_matrix = torch.cat(distance_matrix_list, dim=0)
-        torch.save(distance_matrix,
-                   f"{self.out_path}/distance_matrix_{self.device}.pth")
-        del distance_matrix_list
-        return distance_matrix
+        return self.info_and_save(
+            'Time for calculating distance matrix: ',
+            begin_dist_time,
+            distance_matrix_list,
+            '/distance_matrix_',
+        )
 
     def precompute_logits(self, renew=False) -> list[torch.Tensor]:
         """提前计算所有batch在不同prompter下的logits
@@ -218,16 +215,20 @@ class BaseAggregation(AggregationStrategy):
                 del prompted_images
             # 将当前批次的logits添加到列表中
             logits_list.append(batch_logits_tensor)
-        end_logits_time = time.time()
-        self.logger.info(
-            f"Time for calculating logits: {end_logits_time - begin_logits_time} for device {self.device}")
-        # 将列表中的logits合并为一个张量
-        logits_tensor = torch.cat(logits_list, dim=0)
-        torch.save(logits_tensor,
-                   f"{self.out_path}/logits_tensor_{self.device}.pth")
-        del logits_list
+        return self.info_and_save(
+            'Time for calculating logits: ',
+            begin_logits_time,
+            logits_list,
+            '/logits_tensor_',
+        )
 
-        return logits_tensor
+    def info_and_save(self, arg0, arg1, arg2, arg3):
+        end_dist_time = time.time()
+        self.logger.info(f"{arg0}{end_dist_time - arg1} for device {self.device}")
+        distance_matrix = torch.cat(arg2, dim=0)
+        torch.save(distance_matrix, f"{self.out_path}{arg3}{self.device}.pth")
+        del arg2
+        return distance_matrix
 
     def get_prediction(self, index, data_item):
         """根据不同的聚合策略，返回预测结果
