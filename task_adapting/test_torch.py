@@ -3,7 +3,7 @@ File: /test_torch.py
 Created Date: Saturday December 30th 2023
 Author: Zihan
 -----
-Last Modified: Saturday, 30th December 2023 7:40:21 pm
+Last Modified: Sunday, 7th January 2024 11:36:12 am
 Modified By: the developer formerly known as Zihan at <wzh4464@gmail.com>
 -----
 HISTORY:
@@ -19,11 +19,14 @@ from torch.nn.parallel import DistributedDataParallel as DDP
 from torchvision import datasets, transforms
 import os
 
+
 def setup(rank, world_size):
     dist.init_process_group("nccl", rank=rank, world_size=world_size)
 
+
 def cleanup():
     dist.destroy_process_group()
+
 
 def train(rank, world_size):
     setup(rank, world_size)
@@ -35,12 +38,16 @@ def train(rank, world_size):
     ])
 
     # 加载数据集
-    train_set = datasets.CIFAR10(root='./data', train=True, download=True, transform=transform)
-    train_sampler = torch.utils.data.distributed.DistributedSampler(train_set, num_replicas=world_size, rank=rank)
-    train_loader = torch.utils.data.DataLoader(train_set, batch_size=64, sampler=train_sampler)
+    train_set = datasets.CIFAR10(
+        root='./data', train=True, download=True, transform=transform)
+    train_sampler = torch.utils.data.distributed.DistributedSampler(
+        train_set, num_replicas=world_size, rank=rank)
+    train_loader = torch.utils.data.DataLoader(
+        train_set, batch_size=64, sampler=train_sampler)
 
     # 定义模型
-    model = nn.Sequential(nn.Conv2d(3, 32, 3, 1), nn.ReLU(), nn.Flatten(), nn.Linear(32 * 30 * 30, 10)).cuda(rank)
+    model = nn.Sequential(nn.Conv2d(3, 32, 3, 1), nn.ReLU(
+    ), nn.Flatten(), nn.Linear(32 * 30 * 30, 10)).cuda(rank)
     model = DDP(model, device_ids=[rank])
 
     # 损失函数和优化器
@@ -60,10 +67,16 @@ def train(rank, world_size):
 
     cleanup()
 
-# 假设有三个GPU，分别对应的rank是0, 1, 2
+
+def test_save_torch_list():
+    """Test save torch list.
+    """
+    a = torch.tensor([1, 2, 3])
+    b = torch.tensor([4, 5, 6])
+    c = torch.tensor([7, 8, 9])
+    torch.save([a, b, c], 'test.pt')
+    print(torch.load('test.pt'))
+
+
 if __name__ == "__main__":
-    world_size = 3
-    os.environ['MASTER_ADDR'] = 'localhost'  # 或者是主节点的IP地址
-    os.environ['MASTER_PORT'] = '12345'     # 选择一个未被使用的端口
-    # for rank in range(world_size):
-    torch.multiprocessing.spawn(train, args=(world_size,), nprocs=world_size, join=True)
+    test_save_torch_list()
