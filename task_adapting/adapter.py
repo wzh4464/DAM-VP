@@ -294,7 +294,7 @@ class Adapter(object):
     def our_method_with_head(self, test_data, prompter_path):
         """Diversity-Aware Meta Visual Prompting (Head-Tuning Version).
         """
-        logging.info(f"self.devicename: {self.devicename}")
+        logger.info(f"self.devicename: {self.devicename}")
         train_loader, val_loader, test_loader = test_data
         prompter = self.load_prompter(prompter_path)
         num_classes = data_loader._dataset_class_num(self.args.test_dataset)
@@ -378,18 +378,12 @@ class Adapter(object):
                         best_prompter_gather = deepcopy(prompter_gather)
 
             # test
-            if epoch > 0 and (epoch + 1) % 5 == 0:
-                with torch.no_grad():
-                    num_total, correct = 0, 0
-                    for sample in test_loader:
-                        image = sample["image"].to(self.devicename)
-                        label = sample["label"].to(self.devicename)
-                        prompted_image = self.get_prompted_image(image, prompter=best_prompter) \
-                            if self.args.wo_da else self.get_prompted_image(image, self.prototype_gather, prompter_gather=best_prompter_gather)
-                        logits = self.model(prompted_image)
-                        pred = torch.argmax(logits, dim=-1)
-                        correct += (pred == label).sum().item()
-                        num_total += image.size(0)
-                    acc_test = float(correct / num_total)
-                    logger.info("[Prompt Testing] Epoch: {}, Test acc: {}".format(epoch, acc_test))
-        return acc_test
+            torch.save(best_prompter_gather,
+                f"{self.args.output_dir}/best_prompter_gather_{self.devicename}_epoch_{epoch}.pth")
+            logger.info(f"Saving best prompter gather to {self.args.output_dir}/best_prompter_gather_{self.devicename}_epoch_{epoch}.pth")
+            # save model head
+            # self.head = nn.Linear(self.num_features, num_classes)
+            torch.save(self.model.get_classifier(),
+                       f"{self.args.output_dir}/head_{self.devicename}_epoch_{epoch}.pth")
+            logger.info(f"Saving model head to {self.args.output_dir}/head_{self.devicename}_epoch_{epoch}.pth")
+        return 0 

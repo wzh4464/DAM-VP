@@ -172,7 +172,8 @@ class Arguments:
         else:
             raise NotSupportedError
         # if distributed:
-        self._parser.add_argument('--local_rank', type=int, default=0)
+        self._parser.add_argument('--local_rank', type=int, default=-1)
+        self._parser.add_argument('--local-rank', type=int, default=-1)
         self._parser.add_argument('--world_size', type=int, default=1)
 
     def add_common_args(self):
