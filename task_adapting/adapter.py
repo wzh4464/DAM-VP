@@ -13,6 +13,8 @@ import torch.optim as optim
 import torch.nn.functional as F
 import sklearn.cluster as cluster
 
+from utils.distributed import get_rank
+
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 ROOT_DIR = BASE_DIR
 sys.path.append(os.path.join(ROOT_DIR, '../'))
@@ -166,8 +168,9 @@ class Adapter(object):
         y_pred = torch.from_numpy(y_pred).to(self.devicename)
         coarse_class_idx = torch.unique(y_pred)
         self.num_coarse_classes = len(coarse_class_idx)
-        logger.info("Nums of coarsely divided categories for test dataset {}: {}".format(
-            self.args.test_dataset, len(coarse_class_idx)))
+        logger.info(
+            f"Nums of coarsely divided categories for test dataset {self.args.dataset}: {len(coarse_class_idx)}"
+        )
 
         prototype_gather = []
         for i in range(len(coarse_class_idx)):
@@ -175,8 +178,9 @@ class Adapter(object):
             prototype = rep_gather[pos].mean(0).unsqueeze(0)
             prototype_gather.append(prototype)
         self.prototype_gather = torch.cat(prototype_gather)
-        logger.info("Nums of prototypes of coarse clusters for test dataset {}: {}".format(
-            self.args.test_dataset, self.prototype_gather.size(0)))
+        logger.info(
+            f"Nums of prototypes of coarse clusters for test dataset {self.args.dataset}: {self.prototype_gather.size(0)}"
+        )
 
 
     def our_method(self, test_data, prompter_path):
@@ -223,7 +227,7 @@ class Adapter(object):
             len(train_loader)*self.args.epochs
         )
 
-        num_classes = data_loader._dataset_class_num(self.args.test_dataset)
+        num_classes = data_loader._dataset_class_num(self.args.dataset)
         BEST_ACC_VAL = -np.inf
         if self.args.wo_da:
             best_prompter = deepcopy(prompter)
@@ -303,7 +307,7 @@ class Adapter(object):
         logger.info(f"self.devicename: {self.devicename}")
         train_loader, val_loader, test_loader = test_data
         prompter = self.load_prompter(prompter_path)
-        num_classes = data_loader._dataset_class_num(self.args.test_dataset)
+        num_classes = data_loader._dataset_class_num(self.args.dataset)
         self.model.reset_classifier(num_classes)
         self.model.get_classifier().to(self.devicename)
         if not self.args.wo_da:

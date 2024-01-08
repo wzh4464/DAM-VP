@@ -113,7 +113,7 @@ def _construct_loader(args, dataset, split, batch_size, shuffle, drop_last):
             dataset_name in _DATASET_CATALOG.keys()
         ), "Dataset '{}' not supported".format(dataset_name)
         args.data_dir = os.path.join(args.base_dir, _DATA_DIR_CATALOG[dataset_name])
-        dataset = _DATASET_CATALOG[dataset_name](args, split)
+        dataset = _DATASET_CATALOG[dataset_name](args, split, download=True)
 
     # Create a sampler for multi-process training
     sampler = DistributedSampler(dataset) if args.distributed else None

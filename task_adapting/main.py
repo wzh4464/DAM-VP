@@ -42,8 +42,8 @@ def load_dataset(args):
 def main():
     """Task adaption on the downstream dataset.
     """
-    if args.distributed:
-        torch.distributed.init_process_group(backend="nccl")
+    # if args.distributed:
+    torch.distributed.init_process_group(backend="nccl")
 
     # load datasets for meta train or test
     minis_test = load_dataset(args)
