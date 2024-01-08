@@ -3,7 +3,7 @@ File: /aggregation.py
 Created Date: Friday, December 29th, 2023
 Author: Zihan
 -----
-Last Modified: Sunday, 7th January 2024 10:10:30 pm
+Last Modified: Monday, 8th January 2024 12:47:12 pm
 Modified By: the developer formerly known as Zihan at <wzh4464@gmail.com>
 -----
 HISTORY:
@@ -149,6 +149,7 @@ class BaseAggregation(AggregationStrategy):
         self.device = base_agg.device
         self.num_class = base_agg.num_class
         self.num_cluster = base_agg.num_cluster
+        self.out_path = base_agg.out_path
 
     def load_sigmas(self, renew=False) -> list[torch.Tensor]:
         """load sigmas from prototype_list
@@ -207,7 +208,7 @@ class BaseAggregation(AggregationStrategy):
 
             del rep, prototype_gather, batch_distance_matrix
 
-        return self.info_and_save(
+        return self.infoTime_and_saveTorch(
             'Time for calculating distance matrix: ',
             begin_dist_time,
             distance_matrix_list,
@@ -219,7 +220,7 @@ class BaseAggregation(AggregationStrategy):
 
         @return logits_tensor: [N, B, P, C]
         """
-        # renew = True
+        renew = True
         path = f"{self.out_path}/logits_tensor_{self.device}.pth"
         if not renew and os.path.exists(path):
             self.logger.info(f"Loading logits tensor from {path}")
@@ -234,24 +235,26 @@ class BaseAggregation(AggregationStrategy):
         for data in self.data_loader:
             image = data['image'].to(self.device)
             actual_batch_size = image.size(0)
-            batch_logits_list = [self.model(prompter(image)) for prompter in self.prompter]
+            batch_logits_list = [self.model(prompter(image))
+                                 for prompter in self.prompter]
             # 将计算得到的logits添加到列表中
             logits_list.append(torch.stack(batch_logits_list).permute(1, 0, 2))
 
             del image, batch_logits_list
 
-        return self.info_and_save(
+        return self.infoTime_and_saveTorch(
             'Time for calculating logits: ',
             begin_logits_time,
             logits_list,
             '/logits_tensor_',
         )
 
-    def info_and_save(self, str_time_for, begin_time, save_list, save_name):
-        end_dist_time = time.time()
-        self.logger.info(
-            f"{str_time_for}{end_dist_time - begin_time} for device {self.device}")
-        
+    def infoTime_and_saveTorch(self, str_time_for, begin_time, save_list, save_name):
+        if begin_time:
+            end_dist_time = time.time()
+            self.logger.info(
+                f"{str_time_for}{end_dist_time - begin_time} for device {self.device}")
+
         # save list, list item is tensor
         torch.save(save_list, f"{self.out_path}{save_name}{self.device}.pth")
 
@@ -264,12 +267,36 @@ class BaseAggregation(AggregationStrategy):
         """
         pass
 
-    def cal_prediction(self, weight, logits):
+    def cal_prediction(self, index, weight, logits):
         """根据weight和logits计算预测结果
 
         @return prediction: [B]
         """
-        return torch.argmax(torch.sum(weight.unsqueeze(-1) * logits, dim=1), dim=-1)
+        # new_logits = weight.unsqueeze(-1) * logits
+        new_logits = torch.sum(weight.unsqueeze(-1) * logits, dim=1)
+        if self.device.index == 0 and index == 0:
+            # print weight
+            self.info_and_saveJson(data=weight.tolist(), save_name=f"weight_{self.aggregation_method}")
+            # print distance_matrix
+            self.info_and_saveJson(data=self.distance_list[index].tolist(),
+                                   save_name=f"distance_matrix_{self.aggregation_method}")
+            # print logits
+            self.info_and_saveJson(data=logits.tolist(), save_name=f"logits_{self.aggregation_method}")
+            # print new_logits
+            self.info_and_saveJson(
+                data=new_logits.tolist(), save_name=f"new_logits_{self.aggregation_method}")
+
+            # self.logger.info(
+            #     f"new_logits: {new_logits} for device {self.device} for aggregation {self.aggregation_method}")
+            # # shape [B, C]
+            # self.logger.info(
+            #     f"shape: {new_logits.shape} for device {self.device} for aggregation {self.aggregation_method}")
+        return torch.argmax(new_logits, dim=-1)
+
+    def info_and_saveJson(self, data, save_name):
+        import json
+        with open(f"{self.out_path}/{save_name}_{self.device}.json", 'w') as f:
+            json.dump(data, f)
 
     def get_actual_batch_size(self, sample):
         self.actual_batch_size = sample['image'].size(0)
@@ -284,7 +311,7 @@ class nearestAggregation(BaseAggregation):
     def update(self, cluster_and_rep_list, prototype_list, model, prompter, data_loader, batch_size, device, num_class, mode, logger, out_path):
         # super().__init__(prompter, model, device, adapter)
         super().update(self, cluster_and_rep_list, prototype_list, model,
-                       prompter, data_loader, batch_size, device, num_class, mode)
+                       prompter, data_loader, batch_size, device, num_class, mode, logger, out_path)
 
     def update_from_base(self, base_agg):
         return super().update_from_base(base_agg)
@@ -293,9 +320,13 @@ class nearestAggregation(BaseAggregation):
         # self.logger.info(f"{self.aggregation_method} Aggregation")
         begin_time = time.time()
         dist_matrix = self.distance_list[index].to(self.device)  # [B, P]
-        weight = torch.softmax(-dist_matrix, dim=-1)  # [B, P]
-        res = super().cal_prediction(
-            weight, self.logits_list[index].to(self.device))
+        # weight = torch.softmax(-dist_matrix, dim=-1)  # [B, P]
+        # weight should be hardmax
+        weight = torch.zeros_like(dist_matrix)
+        weight[torch.arange(
+            dist_matrix.size(0)), torch.argmin(dist_matrix, dim=-1)] = 1
+        res = super().cal_prediction(index, weight,
+                                     self.logits_list[index].to(self.device))
         # self.logger.info(
         #     f"Time for calculating prediction: {time.time() - begin_time} by nearest aggregation for device {self.device}")
 
@@ -309,7 +340,7 @@ class gaussianAggregation(BaseAggregation):
 
     def update(self, cluster_and_rep_list, prototype_list, model, prompter, data_loader, batch_size, device, num_class, mode, logger, out_path):
         super().update(self, cluster_and_rep_list, prototype_list, model,
-                       prompter, data_loader, batch_size, device, num_class, mode)
+                       prompter, data_loader, batch_size, device, num_class, mode, logger, out_path)
 
     def update_from_base(self, base_agg):
         return super().update_from_base(base_agg)
@@ -320,12 +351,17 @@ class gaussianAggregation(BaseAggregation):
         # weight[i][j] = exp(-dist_matrix[i][j] / sigma[j])
         begin_time = time.time()
         dist_matrix = self.distance_list[index].to(
-            self.device).to(self.device)  # [B, P]
+            self.device) # [B, P]
         sigma = torch.stack(self.sigma_list).to(self.device)  # [P]
-        weight = torch.exp(-dist_matrix / sigma)  # [B, P]
-        weight = weight / torch.sum(weight, dim=-1, keepdim=True)
-        res = super().cal_prediction(
-            weight, self.logits_list[index].to(self.device))
+
+        if self.device.index == 0 and index == 0:
+            # print sigma
+            self.info_and_saveJson(data=sigma.tolist(), save_name=f"sigma_{self.aggregation_method}")
+
+        weight = torch.exp(-dist_matrix / (2 * sigma ** 2))  # [B, P]
+        # weight = weight / torch.sum(weight, dim=-1, keepdim=True)
+        res = super().cal_prediction(index, weight,
+                                     self.logits_list[index].to(self.device))
         # self.logger.info(
         #     f"Time for calculating prediction: {time.time() - begin_time} by gaussian aggregation for device {self.device}")
 
@@ -339,7 +375,7 @@ class majorityAggregation(BaseAggregation):
 
     def update(self, cluster_and_rep_list, prototype_list, model, prompter, data_loader, batch_size, device, num_class, mode, logger, out_path):
         super().update(self, cluster_and_rep_list, prototype_list, model,
-                       prompter, data_loader, batch_size, device, num_class, mode)
+                       prompter, data_loader, batch_size, device, num_class, mode, logger, out_path)
 
     def update_from_base(self, base_agg):
         return super().update_from_base(base_agg)
@@ -355,8 +391,7 @@ class majorityAggregation(BaseAggregation):
             (actual_batch_size, num_cluster)).to(self.device) / num_cluster
 
         res = super().cal_prediction(
-            weight, self.logits_list[index].to(self.device))
-
+            index, weight, self.logits_list[index].to(self.device))
 
         # self.logger.info(
         #     f"Time for calculating prediction: {time.time() - begin_time} by majority aggregation for device {self.device}")

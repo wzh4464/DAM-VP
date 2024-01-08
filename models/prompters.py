@@ -15,13 +15,13 @@ class PadPrompter(nn.Module):
     def __init__(self, args):
         super(PadPrompter, self).__init__()
         pad_size = args.prompt_size
-        image_size = args.crop_size
+        self.image_size = args.crop_size
 
-        self.base_size = image_size - pad_size * 2
-        self.pad_up = nn.Parameter(torch.randn([1, 3, pad_size, image_size]))
-        self.pad_down = nn.Parameter(torch.randn([1, 3, pad_size, image_size]))
-        self.pad_left = nn.Parameter(torch.randn([1, 3, image_size-pad_size*2, pad_size]))
-        self.pad_right = nn.Parameter(torch.randn([1, 3, image_size-pad_size*2, pad_size]))
+        self.base_size = self.image_size - pad_size * 2
+        self.pad_up = nn.Parameter(torch.randn([1, 3, pad_size, self.image_size]))
+        self.pad_down = nn.Parameter(torch.randn([1, 3, pad_size, self.image_size]))
+        self.pad_left = nn.Parameter(torch.randn([1, 3, self.image_size-pad_size*2, pad_size]))
+        self.pad_right = nn.Parameter(torch.randn([1, 3, self.image_size-pad_size*2, pad_size]))
 
     def forward(self, x):
         base = torch.zeros(1, 3, self.base_size, self.base_size).to(x.device)
@@ -30,6 +30,14 @@ class PadPrompter(nn.Module):
         prompt = torch.cat(x.size(0)*[prompt])
 
         return x + prompt
+
+    def show_prompter_image(self, filename, x=None):
+        import matplotlib.pyplot as plt
+        if x is None:
+            x = torch.zeros(1, 3, self.image_size, self.image_size).to(self.pad_up.device)
+        prompt_vis = self.forward(x)
+        plt.imshow(prompt_vis[0].permute(1, 2, 0).cpu().detach().numpy())
+        plt.savefig(filename)
 
 
 class FixedPatchPrompter(nn.Module):

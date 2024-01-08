@@ -3,7 +3,7 @@ File: /test_torch.py
 Created Date: Saturday December 30th 2023
 Author: Zihan
 -----
-Last Modified: Sunday, 7th January 2024 11:36:12 am
+Last Modified: Monday, 8th January 2024 2:48:31 pm
 Modified By: the developer formerly known as Zihan at <wzh4464@gmail.com>
 -----
 HISTORY:
@@ -11,6 +11,7 @@ Date      		By   	Comments
 ----------		------	---------------------------------------------------------
 '''
 
+from argparse import Namespace
 import torch
 import torch.nn as nn
 import torch.optim as optim
@@ -18,6 +19,13 @@ import torch.distributed as dist
 from torch.nn.parallel import DistributedDataParallel as DDP
 from torchvision import datasets, transforms
 import os
+import sys
+
+BASE_DIR = os.path.dirname(os.path.abspath(__file__))
+ROOT_DIR = BASE_DIR
+sys.path.append(os.path.join(ROOT_DIR, '../'))
+
+from models import prompters
 
 
 def setup(rank, world_size):
@@ -78,5 +86,55 @@ def test_save_torch_list():
     print(torch.load('test.pt'))
 
 
+def test_softmax():
+    """Test softmax.
+    """
+    dist_matrix = torch.tensor([[1.0, 2.0, 3.0], [4.0, 5.0, 6.0]])
+    print(torch.softmax(dist_matrix, dim=-1))
+    weight = torch.zeros_like(dist_matrix)
+    weight[torch.arange(
+        dist_matrix.size(0)), torch.argmin(dist_matrix, dim=-1)] = 1
+    print(weight)
+
+
+def read_and_show_prompter():
+    # 加载数据
+    path = 'result/cifar10_aggregation_fix'
+    checkpoints = torch.load(
+        os.path.join(path, 'best_prompter_gather_cuda:2_epoch_0.pth'))
+
+    # which is saved as:
+    # torch.save(best_prompter_gather,
+    #     f"{self.args.output_dir}/best_prompter_gather_{self.devicename}_epoch_{epoch}.pth")
+
+    # load the prompter (List nn.Module)
+    prompter_state_dicts = checkpoints['prompter_state_dicts']
+    num_coarse_classes = len(prompter_state_dicts)
+    
+    args = Namespace()
+    args.prompt_size = 30
+    args.crop_size = 224
+
+    # prompt_method = 'paddding'
+
+    prompter = [prompters.PadPrompter(args) for _ in range(num_coarse_classes)]
+
+    for idx, p in enumerate(prompter):
+        p.load_state_dict(prompter_state_dicts[f'prompter_{idx}'])
+        p.cuda()
+        p.eval()
+
+    # compare the prompter
+    import matplotlib.pyplot as plt
+    import numpy as np
+    x = torch.zeros(1, 3, args.crop_size, args.crop_size).cuda()
+
+    for idx, p in enumerate(prompter):
+        prompt_vis = p.show_prompter_image(
+            os.path.join(path, f'prompter_{idx}.png'), x)
+
+        #
+
+
 if __name__ == "__main__":
-    test_save_torch_list()
+    read_and_show_prompter()
