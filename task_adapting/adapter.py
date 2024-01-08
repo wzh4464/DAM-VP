@@ -13,6 +13,8 @@ import torch.optim as optim
 import torch.nn.functional as F
 import sklearn.cluster as cluster
 
+from utils.distributed import get_rank
+
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 ROOT_DIR = BASE_DIR
 sys.path.append(os.path.join(ROOT_DIR, '../'))
