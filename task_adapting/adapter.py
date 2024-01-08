@@ -266,6 +266,12 @@ class Adapter(object):
                         best_prompter = deepcopy(prompter)
                     else:
                         best_prompter_gather = deepcopy(prompter_gather)
+            
+            # test
+            torch.save(best_prompter_gather,
+                f"{self.args.output_dir}/best_prompter_gather_{self.devicename}_epoch_{epoch}.pth")
+            logger.info(f"Saving best prompter gather to {self.args.output_dir}/best_prompter_gather_{self.devicename}_epoch_{epoch}.pth")
+            
             # test
             if epoch > 0 and (epoch + 1) % 5 == 0:
                 with torch.no_grad():
