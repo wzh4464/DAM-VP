@@ -3,7 +3,7 @@ File: /aggregation.py
 Created Date: Friday, December 29th, 2023
 Author: Zihan
 -----
-Last Modified: Sunday, 7th January 2024 3:41:43 pm
+Last Modified: Sunday, 7th January 2024 10:10:30 pm
 Modified By: the developer formerly known as Zihan at <wzh4464@gmail.com>
 -----
 HISTORY:
@@ -157,16 +157,17 @@ class BaseAggregation(AggregationStrategy):
             torch.Tensor: [P]
         ]
         """
-
+        renew = True
         path = f"{self.out_path}/sigma_list_{self.device}.pth"
         if not renew and os.path.exists(path):
             self.logger.info(f"Loading sigma list from {path}")
             return torch.load(path)
 
         sigma_list = []
+        # append a float number
         for prototype in self.prototype_list:
             if prototype.sigma is torch.nan:
-                sigma_list.append(torch.nan)
+                sigma_list.append(torch.tensor(float('inf')).to(self.device))
             else:
                 sigma_list.append(torch.norm(prototype.sigma))
         return sigma_list

@@ -47,16 +47,16 @@ def main():
     args, minis_test, metalearner, prompter_path = init()
     # start task adaption
     if args.adapt_method == "prompt_wo_head":
-        acc = metalearner.damvp_method(minis_test, prompter_path)
+        metalearner.damvp_method(minis_test, prompter_path)
 
     elif args.adapt_method == "prompt_w_head":
-        acc = metalearner.our_method_with_head(minis_test, prompter_path)
+        metalearner.our_method_with_head(minis_test, prompter_path)
         # metalearner.save_checkpoint(os.path.join(BASE_DIR, args.output_dir), minis_test, prompter_path)
 
     else:
         raise NotImplementedError
 
-    metalearner.logger.info(f"Task adaption accuracy: {acc}")
+    # metalearner.logger.info(f"Task adaption accuracy: {acc}")
 
 
 def init() -> tuple[Namespace, list[DataLoader], Adapter, str]:

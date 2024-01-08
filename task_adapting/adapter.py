@@ -465,35 +465,35 @@ class Adapter(object):
         return torch.cat(prompted_images, dim=0)
 
     def training_part(self, logger, train_loader, prompter, optimizer, scheduler, epoch, renew: bool = False) -> bool:
+        path = f"{self.args.output_dir}/prompter_{self.args.test_dataset}_epoch_{epoch}_device_{self.devicename}.pth"
+
+        if not renew and os.path.exists(path):
+            if os.path.exists(f"{self.args.output_dir}/prompter_{self.args.test_dataset}_epoch_{epoch+1}_device_{self.devicename}.pth"):
+                logger.info(f"Skipping epoch {epoch}...")
+            else:
+                checkpoint = torch.load(
+                    path, map_location=self.devicename)
+                # load the prompter (List nn.Module)
+                prompter_state_dicts = checkpoint['prompter_state_dicts']
+
+                prompter = [prompters.__dict__[self.args.prompt_method](
+                    self.args).to(self.devicename) for _ in range(self.num_coarse_classes)]
+
+                for idx, p in enumerate(prompter):
+                    p.load_state_dict(
+                        prompter_state_dicts[f'prompter_{idx}'])
+
+                optimizer.load_state_dict(checkpoint['optimizer'])
+
+                logger.info(
+                    f"Loading meta-trained visual prompts from {path}")
+
+            return True
         for i, sample in enumerate(train_loader):
             # adjust learning rate
+
             global_step = len(train_loader) * epoch + i
             scheduler(global_step)
-
-            path = f"{self.args.output_dir}/prompter_{self.args.test_dataset}_epoch_{epoch}_device_{self.devicename}.pth"
-
-            if not renew and os.path.exists(path):
-                if os.path.exists(f"{self.args.output_dir}/prompter_{self.args.test_dataset}_epoch_{epoch+1}_device_{self.devicename}.pth"):
-                    logger.info(f"Skipping epoch {epoch}...")
-                else:
-                    checkpoint = torch.load(
-                        path, map_location=self.devicename)
-                    # load the prompter (List nn.Module)
-                    prompter_state_dicts = checkpoint['prompter_state_dicts']
-
-                    prompter = [prompters.__dict__[self.args.prompt_method](
-                        self.args).to(self.devicename) for _ in range(self.num_coarse_classes)]
-
-                    for idx, p in enumerate(prompter):
-                        p.load_state_dict(
-                            prompter_state_dicts[f'prompter_{idx}'])
-
-                    optimizer.load_state_dict(checkpoint['optimizer'])
-
-                    logger.info(
-                        f"Loading meta-trained visual prompts from {path}")
-
-                return True
             prompted_image = self.get_prompted_image_train(i, sample, prompter)
             logits = self.model(prompted_image)
             loss = self.loss_function(
@@ -548,7 +548,7 @@ class Adapter(object):
             num_total += sample["image"].size(0)
         return float(correct / num_total)
 
-    def make_test(self, logger, test_loader, epoch, best_prompter) -> float:
+    def make_test(self, logger, test_loader, epoch, best_prompter) -> None:
         self.logger.info("Testing")
         base_agg = BaseAggregation()
         base_agg.update(
@@ -565,7 +565,7 @@ class Adapter(object):
                 logger, test_loader, best_prompter, 'testing', epoch, base_agg)
             logger.info(
                 f"[Testing]Test acc: {acc_test}, Time consuming {time.time() - begin_time} for {self.aggregation_strategy_name} in device {self.devicename}")
-        return acc_test
+        # return acc_test
 
     def make_validation(self, logger, val_loader, prompter, best_prompter, best_acc_val, epoch) -> tuple[float, prompters.PadPrompter | prompters.FixedPatchPrompter | prompters.RandomPatchPrompter]:
         logger.info(f"[Prompt Finetuning] Validating: epoch {epoch}")
@@ -650,11 +650,10 @@ class Adapter(object):
 
             # test
             # epoch = self.args.epochs - 1
-            if epoch == self.args.epochs - 1:
-                acc_test = self.make_test(
-                    logger, test_loader, epoch, best_prompter_gather)
-                break
-        return acc_test
+
+        self.make_test(logger, test_loader, epoch, best_prompter_gather)
+
+        return
 
     def save_checkpoint(self, path, test_data, prompters_path):
         logger, train_loader, val_loader, test_loader, best_prompter, optimizer, scheduler \
