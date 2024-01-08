@@ -5,71 +5,11 @@
     // command: ~/miniconda3/envs/dam_vp/bin/python meta-training/main_hf.py --base_dir data/FGVC --pretrained_model vit-b-1k --meta_lr 0.5 --update_lr 0.5 --update_step 4 --meta_step_size 0.5 --test_dataset oxford-flowers
     "configurations": [
         {
-            "name": "Python: main",
-            "type": "python",
-            "request": "launch",
-            "program": "${workspaceFolder}/task_adapting/main.py",
-            "console": "integratedTerminal",
-            "justMyCode": true,
-            "args": [
-                "--base_dir",
-                "../dataset",
-                "--pretrained_model",
-                "vit-b-1k",
-                "--adapt_method",
-                "prompt_wo_head",
-                "--test_dataset",
-                "oxford-flowers",
-                "--epochs",
-                "50",
-                "--lr",
-                "0.5",
-                "--weight_decay",
-                "1e-4",
-                "--checkpoint_dir",
-                "checkpoints/vit-b-1k-wo-head.pth",
-                "--dataset",
-                "vtab-caltech101",
-                "--num_gpus",
-                "3"
-            ],
-            "env": {
-                "PYTHONPATH": "~/miniconda3/envs/dam_vp/bin/python",
-                "CUDA_VISIBLE_DEVICES": "0,1,2"
-            }
-        },
-        // python data_utils/datasets/oxfordpet/dataset.py --data_dir ~/dataset
-        {
-            "name": "Python: oxfordpet/dataset.py",
-            "type": "python",
-            "request": "launch",
-            "program": "${workspaceFolder}/data_utils/datasets/oxfordpet/dataset.py",
-            "console": "integratedTerminal",
-            "justMyCode": true,
-            "args": [
-                "--data_dir",
-                "~/dataset"
-            ],
-            "env": {
-                "PYTHONPATH": "~/miniconda3/envs/dam_vp/bin/python",
-                "CUDA_VISIBLE_DEVICES": "0,1"
-            }
-        },
-        // python -m torch.distributed.launch \
-            // --nproc_per_node=NUM_GPUS_PER_NODE \
-            // --nnodes=NUM_NODES \
-            // --node_rank=NODE_RANK \
-            // --master_addr="MASTER_ADDR" \
-            // --master_port=MASTER_PORT \
-            // YOUR_TRAINING_SCRIPT.py (--arg1 ... train script args...)
-        {
-            "name": "Python: torch.distributed.launch",
-            // torchrun
+            "name": "Python: distributed cifar10 origin",
             "type": "python",
             "request": "launch",
             "console": "integratedTerminal",
             "module": "torch.distributed.launch",
-            // "program": "${workspaceFolder}/task_adapting/main.py",
             "justMyCode": true,
             "args": [
                 "--nproc_per_node=3",
@@ -78,16 +18,18 @@
                 "--master_addr=localhost",
                 "--master_port=1234",
                 "task_adapting/main.py",
+                "--output_dir",
+                "result/cifar10_origin",
                 "--batch_size",
                 "96",
                 "--base_dir",
-                "../dataset",
+                "~/dataset",
                 "--pretrained_model",
-                "vit-b-1k",
+                "vit-b-22k",
                 "--adapt_method",
-                "prompt_wo_head",
+                "prompt_w_head",
                 "--test_dataset",
-                "oxford-flowers",
+                "cifar10",
                 "--epochs",
                 "50",
                 "--lr",
@@ -95,21 +37,22 @@
                 "--weight_decay",
                 "1e-4",
                 "--checkpoint_dir",
-                "checkpoints/vit-b-1k-wo-head.pth",
+                "checkpoints/vit-b-22k-w-head.pth",
                 "--dataset",
-                "vtab-caltech101",
+                "cifar10",
                 "--num_gpus",
                 "3",
-                "--distributed",
+                "--num_workers",
+                "3",
+                "--distributed"
             ],
             "env": {
-                "PYTHONPATH": "~/miniconda3/envs/dam_vp/bin/python",
                 "CUDA_VISIBLE_DEVICES": "0,1,2",
                 "MASTER_ADDR": "localhost",
                 "MASTER_PORT": "1234",
                 "WORLD_SIZE": "3",
-                "RANK": "0",
-                "LOCAL_RANK": "0",
+                "NCLL_BLOCKING_WAIT": "1",
+                "NCCL_TIMEOUT": "200000",
             }
         },
     ]
