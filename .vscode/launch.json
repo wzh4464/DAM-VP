@@ -5,7 +5,7 @@
     // command: ~/miniconda3/envs/dam_vp/bin/python meta-training/main_hf.py --base_dir data/FGVC --pretrained_model vit-b-1k --meta_lr 0.5 --update_lr 0.5 --update_step 4 --meta_step_size 0.5 --test_dataset oxford-flowers
     "configurations": [
         {
-            "name": "Python: distributed cifar10 origin",
+            "name": "Python: distributed svhn origin",
             "type": "python",
             "request": "launch",
             "console": "integratedTerminal",
@@ -19,7 +19,7 @@
                 "--master_port=1234",
                 "task_adapting/main.py",
                 "--output_dir",
-                "result/cifar100_origin_1k_3gpu_without_head_without_meta",
+                "result/svhn_origin_1k_3gpu_without_head_with_meta",
                 "--batch_size",
                 "96",
                 "--base_dir",
@@ -28,8 +28,6 @@
                 "vit-b-1k",
                 "--adapt_method",
                 "prompt_wo_head",
-                "--test_dataset",
-                "cifar100",
                 "--epochs",
                 "50",
                 "--lr",
@@ -37,7 +35,7 @@
                 "--weight_decay",
                 "1e-4",
                 "--dataset",
-                "cifar100",
+                "svhn",
                 "--num_gpus",
                 "3",
                 "--num_workers",
@@ -54,7 +52,7 @@
             }
         },
         {
-            "name": "Python: one gpu",
+            "name": "Python: one gpu svhn",
             "type": "python",
             "request": "launch",
             "program": "${workspaceFolder}/task_adapting/main.py",
@@ -62,7 +60,7 @@
             "justMyCode": true,
             "args": [
                 "--output_dir",
-                "result/cifar10_origin_one_gpu",
+                "result/svhn_origin_one_gpu",
                 "--batch_size",
                 "64",
                 "--base_dir",
@@ -71,8 +69,6 @@
                 "vit-b-1k",
                 "--adapt_method",
                 "prompt_wo_head",
-                "--test_dataset",
-                "cifar100",
                 "--epochs",
                 "50",
                 "--lr",
@@ -82,7 +78,7 @@
                 "--checkpoint_dir",
                 "checkpoints/vit-b-1k-wo-head.pth",
                 "--dataset",
-                "cifar100",
+                "svhn",
                 "--num_gpus",
                 "1",
                 // "--num_workers",

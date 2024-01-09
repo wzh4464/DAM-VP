@@ -161,7 +161,7 @@ class Adapter(object):
         coarse_class_idx = torch.unique(y_pred)
         self.num_coarse_classes = len(coarse_class_idx)
         logger.info(
-            f"Nums of coarsely divided categories for test dataset {self.args.test_dataset}: {len(coarse_class_idx)}"
+            f"Nums of coarsely divided categories for test dataset {self.args.dataset}: {len(coarse_class_idx)}"
         )
 
         prototype_gather = []
@@ -171,7 +171,7 @@ class Adapter(object):
             prototype_gather.append(prototype)
         self.prototype_gather = torch.cat(prototype_gather)
         logger.info(
-            f"Nums of prototypes of coarse clusters for test dataset {self.args.test_dataset}: {self.prototype_gather.size(0)}"
+            f"Nums of prototypes of coarse clusters for test dataset {self.args.dataset}: {self.prototype_gather.size(0)}"
         )
 
 
@@ -219,7 +219,7 @@ class Adapter(object):
             len(train_loader)*self.args.epochs
         )
 
-        num_classes = data_loader._dataset_class_num(self.args.test_dataset)
+        num_classes = data_loader._dataset_class_num(self.args.dataset)
         BEST_ACC_VAL = -np.inf
         if self.args.wo_da:
             best_prompter = deepcopy(prompter)
@@ -299,7 +299,7 @@ class Adapter(object):
         logger.info(f"self.devicename: {self.devicename}")
         train_loader, val_loader, test_loader = test_data
         prompter = self.load_prompter(prompter_path)
-        num_classes = data_loader._dataset_class_num(self.args.test_dataset)
+        num_classes = data_loader._dataset_class_num(self.args.dataset)
         self.model.reset_classifier(num_classes)
         self.model.get_classifier().to(self.devicename)
         if not self.args.wo_da:

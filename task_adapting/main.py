@@ -32,9 +32,9 @@ def load_dataset(args):
     set_seed(args.seed)
     # load test
     minis_test = [
-        data_loader.construct_train_loader(args, args.test_dataset), 
-        data_loader.construct_val_loader(args, args.test_dataset, batch_size=args.batch_size),
-        data_loader.construct_test_loader(args, args.test_dataset)
+        data_loader.construct_train_loader(args, args.dataset), 
+        data_loader.construct_val_loader(args, args.dataset, batch_size=args.batch_size),
+        data_loader.construct_test_loader(args, args.dataset)
     ]
     return minis_test
 
