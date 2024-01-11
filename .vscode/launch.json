@@ -1,0 +1,48 @@
+{
+    // 使用 IntelliSense 了解相关属性。 
+    // 悬停以查看现有属性的描述。
+    // 欲了解更多信息，请访问: https://go.microsoft.com/fwlink/?linkid=830387
+    // command: ~/miniconda3/envs/dam_vp/bin/python meta-training/main_hf.py --base_dir data/FGVC --pretrained_model vit-b-1k --meta_lr 0.5 --update_lr 0.5 --update_step 4 --meta_step_size 0.5 --test_dataset oxford-flowers
+    "configurations": [
+        {
+            "name": "Python: one gpu, mps",
+            "type": "python",
+            "request": "launch",
+            "program": "${workspaceFolder}/task_adapting/main.py",
+            "console": "integratedTerminal",
+            "justMyCode": true,
+            "args": [
+                "--output_dir",
+                "result/cifar10_gaussian",
+                "--batch_size",
+                "8",
+                "--base_dir",
+                "../dataset",
+                "--pretrained_model",
+                "vit-b-22k",
+                "--adapt_method",
+                "prompt_w_mul_head",
+                "--test_dataset",
+                "cifar10",
+                "--epochs",
+                "50",
+                "--lr",
+                "0.5",
+                "--weight_decay",
+                "1e-4",
+                "--checkpoint_dir",
+                "checkpoints/vit-b-22k-w-head.pth",
+                "--dataset",
+                "cifar10",
+                "--num_gpus",
+                "1",
+                // "--distributed",
+                // "--num_workers",
+                // ""
+            ],
+            "env": {
+                "PYTHONPATH": "/Volumes/Mac_Ext/mps_torch/bin/python",
+            }
+        }
+    ]
+}

@@ -130,12 +130,11 @@ class Adapter(object):
                 distance_matrix = torch.sqrt(rep_batch_sum + prototype_gather_sum - 2 * torch.mm(rep_batch, prototype_gather.T)) # [N, M]
                 indices = torch.argmin(distance_matrix, dim=-1) # [B]
 
-            for idx in range(rep_batch.size(0)):
-                prompted_image.append(
-                    prompter_gather[indices[idx]](image[idx].unsqueeze(0))
-                )
-            prompted_image = torch.cat(prompted_image, dim=0)
-        return prompted_image
+            prompted_image = [
+                prompter_gather[indices[idx]](image[idx].unsqueeze(0))
+                for idx in range(rep_batch.size(0))
+            ]
+            return indices, torch.cat(prompted_image, dim=0)
 
 
     def coarse_clustering(self, data_loader):
@@ -193,6 +192,11 @@ class Adapter(object):
         logger.info(
             f"Nums of prototypes of coarse clusters for test dataset {self.args.dataset}: {self.prototype_gather.size(0)}"
         )
+        save_dict = {
+            "prototype_gather": self.prototype_gather,
+            "num_coarse_classes": self.num_coarse_classes
+        }
+        torch.save(save_dict, f"{self.args.output_dir}/prototype_gather_{self.devicename}.pth")
 
 
     def our_method(self, test_data, prompter_path):
@@ -254,7 +258,7 @@ class Adapter(object):
                 scheduler(global_step) # 调整学习率
                 image = sample["image"].to(self.devicename)
                 label = sample["label"].to(self.devicename)
-                prompted_image = self.get_prompted_image(image, prompter=prompter) \
+                _, prompted_image = self.get_prompted_image(image, prompter=prompter) \
                     if self.args.wo_da else self.get_prompted_image(image, self.prototype_gather, prompter_gather=prompter_gather)
                 output = self.model.forward_features(prompted_image)
                 logits = self.rep2logit(output, num_classes)
@@ -273,7 +277,7 @@ class Adapter(object):
                 for sample in val_loader:
                     image = sample["image"].to(self.devicename)
                     label = sample["label"].to(self.devicename)
-                    prompted_image = self.get_prompted_image(image, prompter=prompter) \
+                    _, prompted_image = self.get_prompted_image(image, prompter=prompter) \
                         if self.args.wo_da else self.get_prompted_image(image, self.prototype_gather, prompter_gather=prompter_gather)
                     output = self.model.forward_features(prompted_image)
                     logits = self.rep2logit(output, num_classes)
@@ -301,7 +305,7 @@ class Adapter(object):
                     for sample in test_loader:
                         image = sample["image"].to(self.devicename)
                         label = sample["label"].to(self.devicename)
-                        prompted_image = self.get_prompted_image(image, prompter=best_prompter) \
+                        _, prompted_image = self.get_prompted_image(image, prompter=best_prompter) \
                             if self.args.wo_da else self.get_prompted_image(image, self.prototype_gather, prompter_gather=best_prompter_gather)
                         output = self.model.forward_features(prompted_image)
                         logits = self.rep2logit(output, num_classes)
@@ -367,7 +371,7 @@ class Adapter(object):
                 image = sample["image"].to(self.devicename)
                 label = sample["label"].to(self.devicename)
                 # label[:int(self.args.batch_size/10)] = int(torch.randint(0, num_classes, (1,)).item())
-                prompted_image = self.get_prompted_image(image, prompter=prompter) \
+                _, prompted_image = self.get_prompted_image(image, prompter=prompter) \
                     if self.args.wo_da else self.get_prompted_image(image, self.prototype_gather, prompter_gather=prompter_gather)
                 logits = self.model(prompted_image)
                 loss = self.loss_function(logits, label)
@@ -384,7 +388,7 @@ class Adapter(object):
                 for sample in val_loader:
                     image = sample["image"].to(self.devicename)
                     label = sample["label"].to(self.devicename)
-                    prompted_image = self.get_prompted_image(image, prompter=prompter) \
+                    _, prompted_image = self.get_prompted_image(image, prompter=prompter) \
                         if self.args.wo_da else self.get_prompted_image(image, self.prototype_gather, prompter_gather=prompter_gather)
                     logits = self.model(prompted_image)
                     pred = torch.argmax(logits, dim=-1)
@@ -409,3 +413,195 @@ class Adapter(object):
                        f"{self.args.output_dir}/head_{self.devicename}_epoch_{epoch}.pth")
             logger.info(f"Saving model head to {self.args.output_dir}/head_{self.devicename}_epoch_{epoch}.pth")
         return 0 
+
+    def our_method_with_mul_head(self, test_data, prompter_path):
+        """Multi-Head for unlearning.
+        """
+        logger.info(f"Start our_method_with_mul_head on {self.devicename}")
+        train_loader, val_loader, test_loader = test_data
+        prompter = self.load_prompter(prompter_path)
+        num_classes = data_loader._dataset_class_num(self.args.dataset)
+        self.model.reset_classifier(num_classes)
+
+        if not self.args.wo_da:
+            self.coarse_clustering(test_data)
+            # updated self.num_coarse_classes
+            # updated self.prototype_gather
+
+        # self.model.get_classifier().to(self.devicename)
+        # generate multi-head
+        self.head_list = self.model.get_multi_classifier(
+            self.num_coarse_classes)
+
+        self.head_list = [head.to(self.devicename) for head in self.head_list]
+        # self.head_list.train()
+        for head in self.head_list:
+            head.train()
+
+        if self.args.wo_da:
+            # prompter = deepcopy(prompter)
+            optimizer = torch.optim.SGD([
+                {'params': prompter.parameters(), 'lr': self.lr, 'momemtum': 0.9,
+                 'weight_decay': self.weight_decay},
+                {'params': self.model.get_classifier().parameters(), 'lr': 0.1,
+                 'momemtum': 0.9, 'weight_decay': 0}
+            ])
+        else:
+            # head_params = [
+            #     param for head in self.head_list for param in head.parameters()]
+
+            prompter_gather, prompter_params_gather = [], []
+            for i in range(self.num_coarse_classes):
+                prompter_gather.append(deepcopy(prompter))
+                prompter_params_gather.append({
+                    'params': prompter_gather[i].parameters(),
+                    'lr': self.lr,
+                    'momemtum': 0.9,
+                    'weight_decay': self.weight_decay
+                })
+                prompter_params_gather.append({
+                    'params': self.head_list[i].parameters(),
+                    'lr': 0.1,
+                    'momemtum': 0.9,
+                    'weight_decay': 0
+                })
+
+            # 将多头部分类器的参数添加到优化器配置中
+            # prompter_params_gather.append({
+            #     'params': head_params,
+            #     'lr': 0.1,
+            #     'momemtum': 0.9,
+            #     'weight_decay': 0
+            # })
+
+            optimizer = torch.optim.SGD(prompter_params_gather)
+
+        scheduler = cosine_lr(
+            optimizer,
+            self.lr,
+            len(train_loader) * self.args.epochs // 5,
+            len(train_loader) * self.args.epochs
+        )
+
+        BEST_ACC_VAL = -np.inf
+        if self.args.wo_da:
+            best_prompter = deepcopy(prompter)
+        else:
+            best_prompter_gather = deepcopy(prompter_gather)
+
+        for epoch in range(self.args.epochs):
+            # train
+            for i, sample in enumerate(train_loader):
+                # adjust learning rate
+                global_step = len(train_loader) * epoch + i
+                scheduler(global_step)
+                image = sample["image"].to(self.devicename)
+                label = sample["label"].to(self.devicename)
+                # label[:int(self.args.batch_size/10)] = int(torch.randint(0, num_classes, (1,)).item())
+                logits, loss = self.infer(
+                    prompter, prompter_gather, image, label)
+
+                optimizer.zero_grad()
+                loss.backward()
+                # logger.info(prompter.pad_up.grad)
+                optimizer.step()
+                if (i + 1) % 1 == 0:
+                    act_batch_size = image.size(0)
+                    pred = torch.argmax(logits, dim=-1)
+                    correct = (pred == label).sum().item()
+                    acc_train = float(correct / act_batch_size)
+                    logger.info(
+                        f"[Prompt Finetuning] Epoch: [{epoch}/{self.args.epochs}], Step: [{i}/{len(train_loader)}], Training loss: {loss.item()}, Training acc: {acc_train}, device: {self.devicename}"
+                    )
+
+            with torch.no_grad():
+                num_total, correct = 0, 0
+                for sample in train_loader:
+                    image = sample["image"].to(self.devicename)
+                    label = sample["label"].to(self.devicename)
+                    # prompted_image = self.get_prompted_image(image, prompter=prompter) \
+                    #     if self.args.wo_da else self.get_prompted_image(image, self.prototype_gather, prompter_gather=prompter_gather)
+                    # logits = self.model(prompted_image)
+
+                    logits, loss = self.infer(
+                        prompter, prompter_gather, image, label)
+
+                    pred = torch.argmax(logits, dim=-1)
+                    correct += (pred == label).sum().item()
+                    num_total += image.size(0)
+                acc_val = float(correct / num_total)
+                logger.info(
+                    f"[Prompt Training] Epoch: {epoch}, Train acc: {acc_val}, device: {self.devicename}")
+                if acc_val > BEST_ACC_VAL:
+                    BEST_ACC_VAL = acc_val
+                    if self.args.wo_da:
+                        best_prompter = deepcopy(prompter)
+                    else:
+                        best_prompter_gather = deepcopy(prompter_gather)
+
+            # validate
+            with torch.no_grad():
+                num_total, correct, loss_total = 0, 0, 0
+                for sample in val_loader:
+                    image = sample["image"].to(self.devicename)
+                    label = sample["label"].to(self.devicename)
+                    logits, loss = self.infer(
+                        prompter, prompter_gather, image, label)
+                    loss_total += loss.item()
+
+                    pred = torch.argmax(logits, dim=-1)
+                    correct += (pred == label).sum().item()
+                    num_total += image.size(0)
+                acc_val = float(correct / num_total)
+                loss_val = float(loss_total / len(val_loader))
+                logger.info(
+                    f"[Prompt Validating] Epoch: {epoch}, Val acc: {acc_val}, Val loss: {loss_val}, device: {self.devicename}")
+                if acc_val > BEST_ACC_VAL:
+                    BEST_ACC_VAL = acc_val
+                    if self.args.wo_da:
+                        best_prompter = deepcopy(prompter)
+                    else:
+                        best_prompter_gather = deepcopy(prompter_gather)
+
+            # test
+            torch.save(best_prompter_gather,
+                       f"{self.args.output_dir}/best_prompter_gather_{self.devicename}_epoch_{epoch}.pth")
+            logger.info(
+                f"Saving best prompter gather to {self.args.output_dir}/best_prompter_gather_{self.devicename}_epoch_{epoch}.pth")
+            # save model head
+            # self.head = nn.Linear(self.num_features, num_classes)
+            torch.save(self.head_list,
+                       f"{self.args.output_dir}/head_list_{self.devicename}_epoch_{epoch}.pth")
+            logger.info(
+                f"Saving model head to {self.args.output_dir}/head_list_{self.devicename}_epoch_{epoch}.pth")
+
+
+            if epoch > 0 and (epoch + 1) % 5 == 0:
+                with torch.no_grad():
+                    num_total, correct, loss_total = 0, 0, 0
+                    for sample in test_loader:
+                        image = sample["image"].to(self.devicename)
+                        label = sample["label"].to(self.devicename)
+                        logits, loss = self.infer(
+                            prompter, prompter_gather, image, label)
+                        loss_total += loss.item()
+
+                        pred = torch.argmax(logits, dim=-1)
+                        correct += (pred == label).sum().item()
+                        num_total += image.size(0)
+                    acc_test = float(correct / num_total)
+                    loss_test = float(loss_total / len(test_loader))
+                    logger.info(f"[Prompt Testing] Epoch: {epoch}, Test acc: {acc_test}, Test loss: {loss_test}, device: {self.devicename}")
+        return 0
+
+    def infer(self, prompter, prompter_gather, image, label):
+        indices, prompted_image = self.get_prompted_image(image, prompter=prompter) \
+            if self.args.wo_da else self.get_prompted_image(image, self.prototype_gather, prompter_gather=prompter_gather)
+        reps = self.model.forward_features(prompted_image)
+        # logits = self.head_list[indices](reps)
+
+        logits = torch.stack([self.head_list[indices[idx]](reps[idx])
+                                for idx in range(len(indices))], dim=0)
+
+        loss = self.loss_function(logits, label)
+        return logits, loss

@@ -281,6 +281,14 @@ class VisionTransformer(nn.Module):
             return self.head
         else:
             return self.head, self.head_dist
+    
+    def get_multi_classifier(self, num_classes):
+        # get multi copies of classifier
+        from copy import deepcopy
+        if self.dist_token is None:
+            return nn.ModuleList([deepcopy(self.head) for _ in range(num_classes)])
+        else:
+            raise NotImplementedError
 
     def discard_classifier(self):
         if self.dist_token is None:
