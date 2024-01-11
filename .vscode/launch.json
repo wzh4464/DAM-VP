@@ -15,7 +15,7 @@
                 "--output_dir",
                 "result/cifar10_gaussian",
                 "--batch_size",
-                "32",
+                "1",
                 "--base_dir",
                 "../dataset",
                 "--pretrained_model",
@@ -36,6 +36,7 @@
                 "cifar10",
                 "--num_gpus",
                 "1",
+                // "--distributed",
                 // "--num_workers",
                 // ""
             ],
