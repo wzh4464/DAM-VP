@@ -96,7 +96,7 @@ def main():
 
 if __name__ == '__main__':
     args = Arguments(stage='task_adapting').parser().parse_args()
-    args.device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
+    args.device = torch.device('cuda' if torch.cuda.is_available() else "mps" if torch.backends.mps.is_available() else 'cpu')
 
     # basic configuration
     set_seed(args.seed)

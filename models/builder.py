@@ -19,8 +19,8 @@ _MODEL_TYPES = {
     "swin-b-1k": Swin_B_1K, 
     "swin-b-22k": Swin_B_22K, 
     "moco-v3-b-1k": MoCo_v3_B_1K,
-    "clip-resnet50": CLIP_ResNet50, 
-    "clip-vit-b": CLIP_ViT_B
+    # "clip-resnet50": CLIP_ResNet50,
+    # "clip-vit-b": CLIP_ViT_B
 }
 
 
@@ -28,10 +28,11 @@ def _construct_model(args):
     """Build the pretrained model."""
     assert (
         args.pretrained_model in _MODEL_TYPES.keys()
-    ), "Model type '{}' not supported".format(args.pretrained_model)
-    assert (
-        args.num_gpus <= torch.cuda.device_count()
-    ), "Cannot use more GPU devices than available"
+    ), f"Model type '{args.pretrained_model}' not supported"
+    if args.device == "cuda":
+        assert (
+            args.num_gpus <= torch.cuda.device_count()
+        ), "Cannot use more GPU devices than available"
 
     # Construct the model
     model_type = args.pretrained_model
@@ -44,16 +45,17 @@ def _construct_model(args):
 
 
 def get_current_device():
-    if torch.cuda.is_available():
-        # Determine the GPU used by the current process
-        cur_device = torch.cuda.current_device()
-    else:
-        cur_device = torch.device('cpu')
-    return cur_device
+    return (
+        torch.cuda.current_device()
+        if torch.cuda.is_available()
+        else torch.device("mps")
+        if torch.backends.mps.is_available()
+        else torch.device("cpu")
+    )
 
 
 def load_model_to_device(model, args):
-    cur_device = args.local_rank
+    cur_device = args.local_rank if args.distributed else get_current_device()
     if torch.cuda.is_available():
         # Transfer the model to the current GPU device
         model = model.cuda(device=cur_device)

@@ -161,7 +161,7 @@ def main():
 
 if __name__ == '__main__':
     args = Arguments(stage='meta_training').parser().parse_args()
-    args.device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
+    args.device = torch.device('cuda' if torch.cuda.is_available() else "mps" if torch.backends.mps.is_available() else 'cpu')
 
     # setup training env including loggers
     logging_train_setup(args)
