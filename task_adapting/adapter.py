@@ -20,6 +20,8 @@ ROOT_DIR = BASE_DIR
 sys.path.append(os.path.join(ROOT_DIR, '../'))
 
 from models import prompters
+from models.builder import get_current_device
+import models.backbones.backbone_vit as bb
 from data_utils import loader as data_loader
 from utils.functional import set_seed
 from utils.train_utils import cosine_lr
@@ -51,7 +53,8 @@ class Adapter(object):
         self.logger.info(f"self.rank: {self.rank}")
         
         # destination to this gpu -- .to(self.devicename)
-        self.devicename = torch.device(f"cuda:{self.rank}" if torch.cuda.is_available() else "cpu")
+        self.devicename = torch.device(
+            f"cuda:{self.rank}" if torch.cuda.is_available() else get_current_device())
         self.logger.info(f"self.devicename: {self.devicename}")
         
         self.local_batch_size = args.batch_size // args.world_size
@@ -72,7 +75,7 @@ class Adapter(object):
         """
         prompter = prompters.__dict__[self.args.prompt_method](self.args).to(self.devicename)
         if prompter_path is not None:
-            checkpoint = torch.load(prompter_path)
+            checkpoint = torch.load(prompter_path, map_location=self.devicename)
             prompter.load_state_dict(checkpoint['state_dict'])
             logger.info(f"Loading meta-trained visual prompts from {prompter_path}")
         return prompter

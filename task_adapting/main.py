@@ -78,7 +78,7 @@ if __name__ == '__main__':
     
     # parse arguments
     args = Arguments(stage='task_adapting').parser().parse_args()
-    args.device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
+    args.device = torch.device('cuda' if torch.cuda.is_available() else "mps" if torch.backends.mps.is_available() else 'cpu')
 
     # setup training env including loggers
     logging_train_setup(args)
