@@ -1,4 +1,4 @@
-name: /home/zihan/dataset/new_dam
+name: lmeraser
 channels:
   - pytorch
   - nvidia
@@ -173,4 +173,4 @@ dependencies:
       - portalocker==2.8.2
       - timm==0.4.9
       - tqdm==4.66.1
-prefix: /home/zihan/dataset/new_dam
+prefix: /root/miniconda3/envs/lmeraser
