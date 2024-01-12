@@ -32,8 +32,6 @@
                 "1e-4",
                 "--checkpoint_dir",
                 "checkpoints/vit-b-22k-w-head.pth",
-                "--dataset",
-                "cifar10",
                 "--num_gpus",
                 "1",
                 // "--distributed",
