@@ -41,6 +41,55 @@
             "env": {
                 "PYTHONPATH": "/Volumes/Mac_Ext/mps_torch/bin/python",
             }
+        },
+        {
+            "name": "Python: cifar100 vit-b-22k prompt_w_mul_head",
+            "type": "python",
+            "request": "launch",
+            "console": "integratedTerminal",
+            "module": "torch.distributed.launch",
+            "justMyCode": true,
+            "args": [
+                "--nproc_per_node=3",
+                "--nnodes=1",
+                "--node_rank=0",
+                "--master_addr=localhost",
+                "--master_port=1234",
+                "task_adapting/main.py",
+                "--output_dir",
+                "../result/cifar100-vit-22k-mul-head-with-meta-3gpu-bs24_debug",
+                "--batch_size",
+                "24",
+                "--base_dir",
+                "~/dataset",
+                "--pretrained_model",
+                "vit-b-22k",
+                "--adapt_method",
+                "prompt_w_mul_head",
+                "--epochs",
+                "50",
+                "--lr",
+                "0.5",
+                "--weight_decay",
+                "1e-4",
+                "--test_dataset",
+                "cifar100",
+                "--num_gpus",
+                "3",
+                "--num_workers",
+                "3",
+                "--checkpoint_dir",
+                "checkpoints/vit-b-22k-w-head.pth",
+                "--distributed"
+            ],
+            "env": {
+                "CUDA_VISIBLE_DEVICES": "0,1,2",
+                "MASTER_ADDR": "localhost",
+                "MASTER_PORT": "1234",
+                "WORLD_SIZE": "3",
+                "NCLL_BLOCKING_WAIT": "1",
+                "NCCL_TIMEOUT": "200",
+            }
         }
     ]
 }
