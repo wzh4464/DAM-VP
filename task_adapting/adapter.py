@@ -144,6 +144,15 @@ class Adapter(object):
         partition presents a coarsely divided cluster. Different clusters correspond 
         to different prompters. 
         """
+
+        # if saved exists, load it
+        if osp.exists(f"{self.args.output_dir}/prototype_gather_{self.devicename}.pth") and osp.exists(f"{self.args.output_dir}/num_coarse_classes_{self.devicename}.pth"):
+            logger.info(f"Loading prototype gather from {self.args.output_dir}/prototype_gather_{self.devicename}.pth")
+            save_dict = torch.load(f"{self.args.output_dir}/prototype_gather_{self.devicename}.pth")
+            self.prototype_gather = save_dict["prototype_gather"]
+            self.num_coarse_classes = save_dict["num_coarse_classes"]
+            return
+
         train_loader, _, _ = data_loader
         threshold_dict = {
             "resnet50-1k": 21, 
