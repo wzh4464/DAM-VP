@@ -23,21 +23,36 @@ from utils.functional import set_seed
 from utils.train_utils import cosine_lr
 import utils.logging as logging
 
+from arguments import Arguments
+
 
 logger = logging.get_logger("dam-vp")
 class Adapter(object):
     """A Gather of Our Task Adapting Methods.
     """
 
-    def __init__(self, args, model):
+    def __init__(self, args : Arguments, model : nn.Module):
         super(Adapter, self).__init__()
         self.args = args
         self.model = model.eval()
 
+        self.logger = logging.get_logger("dam-vp")
+
         self.lr = args.lr
         self.weight_decay = args.weight_decay
         self.criterion = torch.nn.CrossEntropyLoss().to(args.device)
-
+        
+        self.device = args.device
+        self.rank = torch.distributed.get_rank() if torch.distributed.is_initialized() else 0
+        
+        self.logger.info(f"self.args.device: {self.args.device}")
+        self.logger.info(f"self.rank: {self.rank}")
+        
+        # destination to this gpu -- .to(self.devicename)
+        self.devicename = torch.device(f"cuda:{self.rank}" if torch.cuda.is_available() else "cpu")
+        self.logger.info(f"self.devicename: {self.devicename}")
+        
+        self.local_batch_size = args.batch_size // args.world_size
 
     def nums_of_learnable_params(self, model):
         n_parameters = sum(p.numel() for p in model.parameters() if p.requires_grad)
@@ -54,7 +69,7 @@ class Adapter(object):
     def load_prompter(self, prompter_path=None):
         """Load the trained visual prompter.
         """
-        prompter = prompters.__dict__[self.args.prompt_method](self.args).to(self.args.device)
+        prompter = prompters.__dict__[self.args.prompt_method](self.args).to(self.devicename)
         if prompter_path is not None:
             checkpoint = torch.load(prompter_path)
             prompter.load_state_dict(checkpoint['state_dict'])
@@ -67,17 +82,18 @@ class Adapter(object):
         """
         set_seed(self.args.seed)
         with torch.no_grad():
-            input = torch.randn(512, 3, self.args.crop_size, self.args.crop_size).to(self.args.device)
-            output = self.model.forward_features(input) # [512, emd_dim]
-            output = output.std(0, unbiased=False) # [emd_dim]
-            indices = output.sort(0, descending=True)[1]
+            inPut = torch.randn(self.local_batch_size, 3, self.args.crop_size, self.args.crop_size).to(self.devicename)
+            outPut = self.model.forward_features(inPut) # [512, emd_dim]
+            outPut = outPut.std(0, unbiased=False) # [emd_dim]
+            indices = outPut.sort(0, descending=True)[1]
             # indices = indices[:100]
             # indices = torch.unique(indices)
         return indices
 
 
     def rep2logit(self, output, num_classes):
-        """Convert the output representations to logits.
+        """Convert the output representations to logits. 
+        把输出的表示转换为logits
         """
         if self.args.adapt_method == "prompt_wo_head":
             # activity aware
@@ -138,7 +154,7 @@ class Adapter(object):
         )
         with torch.no_grad():
             for i, sample in enumerate(train_loader):
-                image = sample["image"].to(self.args.device)
+                image = sample["image"].to(self.devicename)
                 rep = self.model.forward_features(image)
                 rep_gather = rep if i < 1 else torch.cat([rep_gather, rep], dim=0)
 
@@ -147,7 +163,7 @@ class Adapter(object):
                     break
 
         y_pred = hc.fit(rep_gather.detach().cpu().numpy()).labels_
-        y_pred = torch.from_numpy(y_pred).to(self.args.device)
+        y_pred = torch.from_numpy(y_pred).to(self.devicename)
         coarse_class_idx = torch.unique(y_pred)
         self.num_coarse_classes = len(coarse_class_idx)
         logger.info("Nums of coarsely divided categories for test dataset {}: {}".format(
@@ -168,8 +184,12 @@ class Adapter(object):
         """
         train_loader, val_loader, test_loader = test_data
         prompter = self.load_prompter(prompter_path)
-        self.model.discard_classifier()
-        self.indices = self.get_active_neuron_index()
+
+        # register logger
+        logger = self.logger
+        
+        self.model.discard_classifier() # freeze the head
+        self.indices = self.get_active_neuron_index() # get the active neurons
         if not self.args.wo_da:
             self.coarse_clustering(test_data)
 
@@ -196,7 +216,7 @@ class Adapter(object):
                 momentum=0.9,
                 weight_decay=0
             )
-        scheduler = cosine_lr(
+        scheduler = cosine_lr( # 依据cosine函数调整学习率
             optimizer, 
             self.lr, 
             len(train_loader)*self.args.epochs//5, 
@@ -214,10 +234,10 @@ class Adapter(object):
             # train
             for i, sample in enumerate(train_loader):
                 # adjust learning rate
-                global_step = len(train_loader) * epoch + i
-                scheduler(global_step)
-                image = sample["image"].to(self.args.device)
-                label = sample["label"].to(self.args.device)
+                global_step = len(train_loader) * epoch + i # 整个训练过程中的step
+                scheduler(global_step) # 调整学习率
+                image = sample["image"].to(self.devicename)
+                label = sample["label"].to(self.devicename)
                 prompted_image = self.get_prompted_image(image, prompter=prompter) \
                     if self.args.wo_da else self.get_prompted_image(image, self.prototype_gather, prompter_gather=prompter_gather)
                 output = self.model.forward_features(prompted_image)
@@ -228,14 +248,15 @@ class Adapter(object):
                 # logger.info(prompter.pad_up.grad)
                 optimizer.step()
                 if (i + 1) % 1 == 0:
-                    logger.info("[Prompt Finetuning] Epoch: [{}/{}], Step: [{}/{}], Training loss: {}".format(
-                        epoch, self.args.epochs, i, len(train_loader), loss.item()))
+                    logger.info(
+                        f"[Prompt Finetuning] Epoch: [{epoch}/{self.args.epochs}], Step: [{i}/{len(train_loader)}], Training loss: {loss.item()}, device: {self.devicename}"
+                    )
             # validate
             with torch.no_grad():
                 num_total, correct = 0, 0
-                for i, sample in enumerate(val_loader):
-                    image = sample["image"].to(self.args.device)
-                    label = sample["label"].to(self.args.device)
+                for sample in val_loader:
+                    image = sample["image"].to(self.devicename)
+                    label = sample["label"].to(self.devicename)
                     prompted_image = self.get_prompted_image(image, prompter=prompter) \
                         if self.args.wo_da else self.get_prompted_image(image, self.prototype_gather, prompter_gather=prompter_gather)
                     output = self.model.forward_features(prompted_image)
@@ -255,9 +276,9 @@ class Adapter(object):
             if epoch > 0 and (epoch + 1) % 5 == 0:
                 with torch.no_grad():
                     num_total, correct = 0, 0
-                    for i, sample in enumerate(test_loader):
-                        image = sample["image"].to(self.args.device)
-                        label = sample["label"].to(self.args.device)
+                    for sample in test_loader:
+                        image = sample["image"].to(self.devicename)
+                        label = sample["label"].to(self.devicename)
                         prompted_image = self.get_prompted_image(image, prompter=best_prompter) \
                             if self.args.wo_da else self.get_prompted_image(image, self.prototype_gather, prompter_gather=best_prompter_gather)
                         output = self.model.forward_features(prompted_image)
@@ -266,18 +287,19 @@ class Adapter(object):
                         correct += (pred == label).sum().item()
                         num_total += image.size(0)
                     acc_test = float(correct / num_total)
-                    logger.info("[Prompt Testing] Epoch: {}, Test acc: {}".format(epoch, acc_test))
+                    logger.info(f"[Prompt Testing] Epoch: {epoch}, Test acc: {acc_test}, device: {self.devicename}")
         return acc_test
 
 
     def our_method_with_head(self, test_data, prompter_path):
         """Diversity-Aware Meta Visual Prompting (Head-Tuning Version).
         """
+        logging.info(f"self.devicename: {self.devicename}")
         train_loader, val_loader, test_loader = test_data
         prompter = self.load_prompter(prompter_path)
         num_classes = data_loader._dataset_class_num(self.args.test_dataset)
         self.model.reset_classifier(num_classes)
-        self.model.get_classifier().to(self.args.device)
+        self.model.get_classifier().to(self.devicename)
         if not self.args.wo_da:
             self.coarse_clustering(test_data)
 
@@ -320,8 +342,8 @@ class Adapter(object):
                 # adjust learning rate
                 global_step = len(train_loader) * epoch + i
                 scheduler(global_step)
-                image = sample["image"].to(self.args.device)
-                label = sample["label"].to(self.args.device)
+                image = sample["image"].to(self.devicename)
+                label = sample["label"].to(self.devicename)
                 # label[:int(self.args.batch_size/10)] = int(torch.randint(0, num_classes, (1,)).item())
                 prompted_image = self.get_prompted_image(image, prompter=prompter) \
                     if self.args.wo_da else self.get_prompted_image(image, self.prototype_gather, prompter_gather=prompter_gather)
@@ -337,9 +359,9 @@ class Adapter(object):
             # validate
             with torch.no_grad():
                 num_total, correct = 0, 0
-                for i, sample in enumerate(val_loader):
-                    image = sample["image"].to(self.args.device)
-                    label = sample["label"].to(self.args.device)
+                for sample in val_loader:
+                    image = sample["image"].to(self.devicename)
+                    label = sample["label"].to(self.devicename)
                     prompted_image = self.get_prompted_image(image, prompter=prompter) \
                         if self.args.wo_da else self.get_prompted_image(image, self.prototype_gather, prompter_gather=prompter_gather)
                     logits = self.model(prompted_image)
@@ -359,9 +381,9 @@ class Adapter(object):
             if epoch > 0 and (epoch + 1) % 5 == 0:
                 with torch.no_grad():
                     num_total, correct = 0, 0
-                    for i, sample in enumerate(test_loader):
-                        image = sample["image"].to(self.args.device)
-                        label = sample["label"].to(self.args.device)
+                    for sample in test_loader:
+                        image = sample["image"].to(self.devicename)
+                        label = sample["label"].to(self.devicename)
                         prompted_image = self.get_prompted_image(image, prompter=best_prompter) \
                             if self.args.wo_da else self.get_prompted_image(image, self.prototype_gather, prompter_gather=best_prompter_gather)
                         logits = self.model(prompted_image)

@@ -42,6 +42,7 @@ def load_dataset(args):
 def main():
     """Task adaption on the downstream dataset.
     """
+    torch.distributed.init_process_group(backend="nccl")
 
     # load datasets for meta train or test
     minis_test = load_dataset(args)
@@ -70,6 +71,11 @@ def main():
 
 
 if __name__ == '__main__':
+    # print transited arguments
+    print(" ".join(sys.argv))
+    torch.autograd.set_detect_anomaly(True)
+    
+    # parse arguments
     args = Arguments(stage='task_adapting').parser().parse_args()
     args.device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
 
