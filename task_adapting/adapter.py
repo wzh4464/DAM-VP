@@ -680,8 +680,8 @@ class Adapter(object):
                 acc_train, loss_train = self.evaluation_rand(train_loader, prompter, prompter_gather)
                 logger.info(
                     f"[Prompt Training] Epoch: {epoch}, Train acc: {acc_train}, Train loss: {loss_train}, device: {self.devicename}")
-                if acc_val > BEST_ACC_VAL:
-                    BEST_ACC_VAL = acc_val
+                if acc_train > BEST_ACC_VAL:
+                    BEST_ACC_VAL = acc_train
                     if self.args.wo_da:
                         best_prompter = deepcopy(prompter)
                     else:
