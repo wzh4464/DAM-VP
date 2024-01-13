@@ -3,7 +3,7 @@
  # Created Date: Friday January 12th 2024
  # Author: Zihan
  # -----
- # Last Modified: Saturday, 13th January 2024 4:19:53 pm
+ # Last Modified: Saturday, 13th January 2024 4:31:50 pm
  # Modified By: the developer formerly known as Zihan at <wzh4464@gmail.com>
  # -----
  # HISTORY:
@@ -27,9 +27,9 @@ conda create -n lmeraser
 conda activate lmeraser
 
 # conda install from environment.yaml
-conda env update --file environment.yaml -y
+conda env update --file environment.yaml
 
-apt install tmux rsync -y
+apt update && apt install tmux rsync -y
 
 curl -sL https://aka.ms/InstallAzureCLIDeb | bash
 
