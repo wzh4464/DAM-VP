@@ -67,6 +67,10 @@ def main():
     elif args.adapt_method == "prompt_w_mul_head":
         prompter_path = None if args.checkpoint_dir == "" else os.path.join(BASE_DIR, args.checkpoint_dir)
         accs = metalearner.our_method_with_mul_head(minis_test, prompter_path)
+    
+    elif args.adapt_method == "random_part":
+        prompter_path = None if args.checkpoint_dir == "" else os.path.join(BASE_DIR, args.checkpoint_dir)
+        accs = metalearner.random_part(minis_test, prompter_path)
 
     else:
         raise NotImplementedError

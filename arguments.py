@@ -137,7 +137,7 @@ class Arguments:
     
         meta_datasets: list, default: ['sun397', 'stl10', 'fru92', 'veg200', 'oxford-iiit-pets', 'eurosat'], help: The datasets selected for meta training.
         test_dataset: str, default: 'oxford-flowers', choices: ['cifar10', 'cifar100', 'cub200', 'nabirds', 'oxford-flowers', 'stanford-dogs', 'stanford-cars', 'fgvc-aircraft', 'food101', 'dtd', 'svhn', 'gtsrb', 'sun397', 'stl10', 'fru92', 'veg200', 'oxford-iiit-pets', 'eurosat'], help: The dataset selected for evaluation.
-        adapt_method: str, default: 'prompt_wo_head', choices: ['prompt_wo_head', 'prompt_w_head', 'prompt_w_mul_head'], help: The method for task adaption.
+        adapt_method: str, default: 'prompt_wo_head', choices: ['prompt_wo_head', 'prompt_w_head', 'prompt_w_mul_head', 'random_part'], help: The method for task adaption.
         epochs: int, default: 200, help: Nums of training epochs.
         optimizer: str, default: 'Adam', help: Optimizer for training.
         num_tasks: int, default: 6, help: Meta batch size, namely task num.
@@ -152,7 +152,7 @@ class Arguments:
     Task adapting arguments:
 
         test_dataset: str, default: 'oxford-flowers', choices: ['cifar10', 'cifar100', 'cub200', 'nabirds', 'oxford-flowers', 'stanford-dogs', 'stanford-cars', 'fgvc-aircraft', 'food101', 'dtd', 'svhn', 'gtsrb', 'sun397', 'stl10', 'fru92', 'veg200', 'oxford-iiit-pets', 'eurosat'], help: The dataset selected for evaluation.
-        adapt_method: str, default: 'prompt_wo_head', choices: ['prompt_wo_head', 'prompt_w_head', 'prompt_w_mul_head'], help: The method for task adaption.
+        adapt_method: str, default: 'prompt_wo_head', choices: ['prompt_wo_head', 'prompt_w_head', 'prompt_w_mul_head', 'random_part'], help: The method for task adaption.
         checkpoint_dir: str, default: '', help: The directory of checkpoint.
         epochs: int, default: 50, help: Nums of training epochs.
         optimizer: str, default: 'Adam', help: Optimizer for training.
@@ -212,7 +212,7 @@ class Arguments:
         ### data related
         self._parser.add_argument('--meta_datasets', type=list, default=META_TRAIN_DATASETS, help='The datasets selected for meta training')
         self._parser.add_argument('--test_dataset', type=str, default='oxford-flowers', choices=TASK_ADAPT_DATASETS, help='The dataset selected for evaluation')
-        self._parser.add_argument('--adapt_method', type=str, default='prompt_wo_head', choices=['prompt_wo_head', 'prompt_w_head', 'prompt_w_mul_head'])
+        self._parser.add_argument('--adapt_method', type=str, default='prompt_wo_head', choices=['prompt_wo_head', 'prompt_w_head', 'prompt_w_mul_head', 'random_part'])
 
         ### meta training related
         self._parser.add_argument('--epochs', type=int, default=200, help='Nums of training epochs.')
@@ -230,7 +230,7 @@ class Arguments:
     def add_task_adapt_args(self):
         ### data related
         self._parser.add_argument('--test_dataset', type=str, default='oxford-flowers', choices=TASK_ADAPT_DATASETS, help='The dataset selected for evaluation')
-        self._parser.add_argument('--adapt_method', type=str, default='prompt_wo_head', choices=['prompt_wo_head', 'prompt_w_head', 'prompt_w_mul_head'])
+        self._parser.add_argument('--adapt_method', type=str, default='prompt_wo_head', choices=['prompt_wo_head', 'prompt_w_head', 'prompt_w_mul_head', 'random_part'])
         self._parser.add_argument('--checkpoint_dir', type=str, default='')
 
         ### tuning related
