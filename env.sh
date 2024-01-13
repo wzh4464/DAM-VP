@@ -3,7 +3,7 @@
  # Created Date: Friday January 12th 2024
  # Author: Zihan
  # -----
- # Last Modified: Saturday, 13th January 2024 11:46:37 am
+ # Last Modified: Saturday, 13th January 2024 4:19:53 pm
  # Modified By: the developer formerly known as Zihan at <wzh4464@gmail.com>
  # -----
  # HISTORY:
@@ -56,3 +56,9 @@ mkdir -p ../dataset
 
 # git config --global user.name runpod_n
 # git config --global user.email 32484940+wzh4464@users.noreply.github.com
+
+### download dataset
+
+## cifar10
+
+bash download_az_file.sh torchvision_dataset/cifar-10-batches-py ~/dataset/torchvision_dataset/cifar-10-batches-py
