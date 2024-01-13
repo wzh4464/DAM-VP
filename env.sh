@@ -3,7 +3,7 @@
  # Created Date: Friday January 12th 2024
  # Author: Zihan
  # -----
- # Last Modified: Saturday, 13th January 2024 12:16:48 am
+ # Last Modified: Saturday, 13th January 2024 11:46:37 am
  # Modified By: the developer formerly known as Zihan at <wzh4464@gmail.com>
  # -----
  # HISTORY:
@@ -27,11 +27,32 @@ conda create -n lmeraser
 conda activate lmeraser
 
 # conda install from environment.yaml
-conda env update --file environment.yaml
+conda env update --file environment.yaml -y
 
-apt install tmux -y
+apt install tmux rsync -y
 
-curl -sL https://aka.ms/InstallAzureCLIDeb | sudo bash
+curl -sL https://aka.ms/InstallAzureCLIDeb | bash
 
 # az login
 
+az login --use-device-code
+
+mkdir -p models/checkpoints
+
+# az storage blob download --account-name lmeraser --container-name hance --name models/checkpoints/vit_base_p16_224_in22k.pth --file models/checkpoints/vit_base_p16_224_in22k.pth
+# az storage blob download --account-name lmeraser --container-name hance --name models/checkpoints/swin_base_patch4_window7_224_22k.pth --file models/checkpoints/swin_base_patch4_window7_224_22k.pth
+
+mkdir -p task_adapting/checkpoints
+
+# az storage blob download --account-name lmeraser --container-name hance --name task_adapting/checkpoints/vit-b-22k-w-head.pth --file task_adapting/checkpoints/vit-b-22k-w-head.pth
+# az storage blob download --account-name lmeraser --container-name hance --name task_adapting/checkpoints/swin-b-22k-w-head.pth --file task_adapting/checkpoints/swin-b-22k-w-head.pth
+
+mkdir -p ../dataset
+
+# az storage blob download --account-name lmeraser --container-name hance --name dataset/cifar100.zip --file ../dataset/cifar100.zip
+
+# python -m pip install --upgrade pip
+# pip install tqdm simplejson termcolor iopath pandas tkintertable
+
+# git config --global user.name runpod_n
+# git config --global user.email 32484940+wzh4464@users.noreply.github.com
