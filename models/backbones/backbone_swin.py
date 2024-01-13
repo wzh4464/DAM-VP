@@ -526,6 +526,11 @@ class SwinTransformer(nn.Module):
     def discard_classifier(self):
         self.head = None
 
+    def get_multi_classifier(self, num_classes):
+        # get multi copies of classifier
+        from copy import deepcopy
+        return nn.ModuleList([deepcopy(self.head) for _ in range(num_classes)])
+        
     def reset_classifier(self, num_classes, global_pool=''):
         self.num_classes = num_classes
         self.head = nn.Linear(self.num_features, num_classes) if num_classes > 0 else nn.Identity()
