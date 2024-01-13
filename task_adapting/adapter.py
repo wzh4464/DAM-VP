@@ -631,7 +631,7 @@ class Adapter(object):
     def random_part(self, test_data, prompter_path):
         """Randomly partition the images into several groups.
         """
-        logger.info(f"Start our_method_with_mul_head on {self.devicename}")
+        logger.info(f"Start random partition on {self.devicename}")
         train_loader, val_loader, test_loader = test_data
         prompter = self.load_prompter(prompter_path)
         num_classes = data_loader._dataset_class_num(self.args.test_dataset)
@@ -675,44 +675,11 @@ class Adapter(object):
             # train
             for i, sample in enumerate(train_loader):
                 # adjust learning rate
-                global_step = len(train_loader) * epoch + i
-                scheduler(global_step)
-                image = sample["image"].to(self.devicename)
-                label = sample["label"].to(self.devicename)
-                # label[:int(self.args.batch_size/10)] = int(torch.randint(0, num_classes, (1,)).item())
-                logits, loss = self.infer_rand(
-                    prompter, prompter_gather, image, label)
-
-                optimizer.zero_grad()
-                loss.backward()
-                # logger.info(prompter.pad_up.grad)
-                optimizer.step()
-                if (i + 1) % 1 == 0:
-                    act_batch_size = image.size(0)
-                    pred = torch.argmax(logits, dim=-1)
-                    correct = (pred == label).sum().item()
-                    acc_train = float(correct / act_batch_size)
-                    logger.info(
-                        f"[Prompt Finetuning] Epoch: [{epoch}/{self.args.epochs}], Step: [{i}/{len(train_loader)}], Training loss: {loss.item()}, Training acc: {acc_train}, device: {self.devicename}"
-                    )
+                self.train_rand(train_loader, prompter, prompter_gather, i, optimizer, scheduler, epoch, sample)
             with torch.no_grad():
-                num_total, correct = 0, 0
-                for sample in train_loader:
-                    image = sample["image"].to(self.devicename)
-                    label = sample["label"].to(self.devicename)
-                    # prompted_image = self.get_prompted_image(image, prompter=prompter) \
-                    #     if self.args.wo_da else self.get_prompted_image(image, self.prototype_gather, prompter_gather=prompter_gather)
-                    # logits = self.model(prompted_image)
-
-                    logits, loss = self.infer_rand(
-                        prompter, prompter_gather, image, label)
-
-                    pred = torch.argmax(logits, dim=-1)
-                    correct += (pred == label).sum().item()
-                    num_total += image.size(0)
-                acc_val = float(correct / num_total)
+                acc_train, loss_train = self.evaluation_rand(train_loader, prompter, prompter_gather)
                 logger.info(
-                    f"[Prompt Training] Epoch: {epoch}, Train acc: {acc_val}, device: {self.devicename}")
+                    f"[Prompt Training] Epoch: {epoch}, Train acc: {acc_train}, Train loss: {loss_train}, device: {self.devicename}")
                 if acc_val > BEST_ACC_VAL:
                     BEST_ACC_VAL = acc_val
                     if self.args.wo_da:
@@ -722,19 +689,7 @@ class Adapter(object):
 
             # validate
             with torch.no_grad():
-                num_total, correct, loss_total = 0, 0, 0
-                for sample in val_loader:
-                    image = sample["image"].to(self.devicename)
-                    label = sample["label"].to(self.devicename)
-                    logits, loss = self.infer_rand(
-                        prompter, prompter_gather, image, label)
-                    loss_total += loss.item()
-
-                    pred = torch.argmax(logits, dim=-1)
-                    correct += (pred == label).sum().item()
-                    num_total += image.size(0)
-                acc_val = float(correct / num_total)
-                loss_val = float(loss_total / len(val_loader))
+                acc_val, loss_val = self.evaluation_rand(val_loader, prompter, prompter_gather)
                 logger.info(
                     f"[Prompt Validating] Epoch: {epoch}, Val acc: {acc_val}, Val loss: {loss_val}, device: {self.devicename}")
                 if acc_val > BEST_ACC_VAL:
@@ -758,22 +713,47 @@ class Adapter(object):
 
             if epoch > 0 and (epoch + 1) % 5 == 0:
                 with torch.no_grad():
-                    num_total, correct, loss_total = 0, 0, 0
-                    for sample in test_loader:
-                        image = sample["image"].to(self.devicename)
-                        label = sample["label"].to(self.devicename)
-                        logits, loss = self.infer_rand(
-                            prompter, prompter_gather, image, label)
-                        loss_total += loss.item()
-
-                        pred = torch.argmax(logits, dim=-1)
-                        correct += (pred == label).sum().item()
-                        num_total += image.size(0)
-                    acc_test = float(correct / num_total)
-                    loss_test = float(loss_total / len(test_loader))
+                    acc_test, loss_test = self.evaluation_rand(test_loader, prompter, prompter_gather)
                     logger.info(
                         f"[Prompt Testing] Epoch: {epoch}, Test acc: {acc_test}, Test loss: {loss_test}, device: {self.devicename}")
         return 0
+
+    def train_rand(self, train_loader, prompter, prompter_gather, step, optimizer, scheduler, epoch, batch):
+        global_step = len(train_loader) * epoch + step
+        scheduler(global_step)
+        image = batch["image"].to(self.devicename)
+        label = batch["label"].to(self.devicename)
+                # label[:int(self.args.batch_size/10)] = int(torch.randint(0, num_classes, (1,)).item())
+        logits, loss = self.infer_rand(
+                    prompter, prompter_gather, image, label)
+
+        optimizer.zero_grad()
+        loss.backward()
+                # logger.info(prompter.pad_up.grad)
+        optimizer.step()
+        act_batch_size = image.size(0)
+        pred = torch.argmax(logits, dim=-1)
+        correct = (pred == label).sum().item()
+        acc_train = float(correct / act_batch_size)
+        logger.info(
+                    f"[Prompt Finetuning] Epoch: [{epoch}/{self.args.epochs}], Step: [{step}/{len(train_loader)}], Training loss: {loss.item()}, Training acc: {acc_train}, device: {self.devicename}"
+                )
+
+    def evaluation_rand(self, test_loader, prompter, prompter_gather):
+        num_total, correct, loss_total = 0, 0, 0
+        for sample in test_loader:
+            image = sample["image"].to(self.devicename)
+            label = sample["label"].to(self.devicename)
+            logits, loss = self.infer_rand(
+                            prompter, prompter_gather, image, label)
+            loss_total += loss.item()
+
+            pred = torch.argmax(logits, dim=-1)
+            correct += (pred == label).sum().item()
+            num_total += image.size(0)
+        acc_test = float(correct / num_total)
+        loss_test = float(loss_total / len(test_loader))
+        return acc_test,loss_test
 
     def infer(self, prompter, prompter_gather, image, label):
         indices, prompted_image = self.get_prompted_image(image, prompter=prompter) \
