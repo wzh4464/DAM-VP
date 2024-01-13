@@ -196,7 +196,7 @@ class Adapter(object):
             "prototype_gather": self.prototype_gather,
             "num_coarse_classes": self.num_coarse_classes
         }
-        torch.save(save_dict, f"{self.args.output_dir}/prototype_gather_{self.devicename}.pth")
+        # torch.save(save_dict, f"{self.args.output_dir}/prototype_gather_{self.devicename}.pth")
 
 
     def our_method(self, test_data, prompter_path):
@@ -294,9 +294,9 @@ class Adapter(object):
                         best_prompter_gather = deepcopy(prompter_gather)
             
             # test
-            torch.save(best_prompter_gather,
-                f"{self.args.output_dir}/best_prompter_gather_{self.devicename}_epoch_{epoch}.pth")
-            logger.info(f"Saving best prompter gather to {self.args.output_dir}/best_prompter_gather_{self.devicename}_epoch_{epoch}.pth")
+            # torch.save(best_prompter_gather,
+            #     f"{self.args.output_dir}/best_prompter_gather_{self.devicename}_epoch_{epoch}.pth")
+            # logger.info(f"Saving best prompter gather to {self.args.output_dir}/best_prompter_gather_{self.devicename}_epoch_{epoch}.pth")
             
             # test
             if epoch > 0 and (epoch + 1) % 5 == 0:
@@ -404,14 +404,14 @@ class Adapter(object):
                         best_prompter_gather = deepcopy(prompter_gather)
 
             # test
-            torch.save(best_prompter_gather,
-                f"{self.args.output_dir}/best_prompter_gather_{self.devicename}_epoch_{epoch}.pth")
-            logger.info(f"Saving best prompter gather to {self.args.output_dir}/best_prompter_gather_{self.devicename}_epoch_{epoch}.pth")
+            # torch.save(best_prompter_gather,
+            #     f"{self.args.output_dir}/best_prompter_gather_{self.devicename}_epoch_{epoch}.pth")
+            # logger.info(f"Saving best prompter gather to {self.args.output_dir}/best_prompter_gather_{self.devicename}_epoch_{epoch}.pth")
             # save model head
             # self.head = nn.Linear(self.num_features, num_classes)
-            torch.save(self.model.get_classifier(),
-                       f"{self.args.output_dir}/head_{self.devicename}_epoch_{epoch}.pth")
-            logger.info(f"Saving model head to {self.args.output_dir}/head_{self.devicename}_epoch_{epoch}.pth")
+            # torch.save(self.model.get_classifier(),
+            #            f"{self.args.output_dir}/head_{self.devicename}_epoch_{epoch}.pth")
+            # logger.info(f"Saving model head to {self.args.output_dir}/head_{self.devicename}_epoch_{epoch}.pth")
         return 0 
 
     def our_method_with_mul_head(self, test_data, prompter_path):
@@ -564,16 +564,16 @@ class Adapter(object):
                         best_prompter_gather = deepcopy(prompter_gather)
 
             # test
-            torch.save(best_prompter_gather,
-                       f"{self.args.output_dir}/best_prompter_gather_{self.devicename}_epoch_{epoch}.pth")
-            logger.info(
-                f"Saving best prompter gather to {self.args.output_dir}/best_prompter_gather_{self.devicename}_epoch_{epoch}.pth")
+            # torch.save(best_prompter_gather,
+            #            f"{self.args.output_dir}/best_prompter_gather_{self.devicename}_epoch_{epoch}.pth")
+            # logger.info(
+            #     f"Saving best prompter gather to {self.args.output_dir}/best_prompter_gather_{self.devicename}_epoch_{epoch}.pth")
             # save model head
             # self.head = nn.Linear(self.num_features, num_classes)
-            torch.save(self.head_list,
-                       f"{self.args.output_dir}/head_list_{self.devicename}_epoch_{epoch}.pth")
-            logger.info(
-                f"Saving model head to {self.args.output_dir}/head_list_{self.devicename}_epoch_{epoch}.pth")
+            # torch.save(self.head_list,
+            #            f"{self.args.output_dir}/head_list_{self.devicename}_epoch_{epoch}.pth")
+            # logger.info(
+            #     f"Saving model head to {self.args.output_dir}/head_list_{self.devicename}_epoch_{epoch}.pth")
 
 
             if epoch > 0 and (epoch + 1) % 5 == 0:
