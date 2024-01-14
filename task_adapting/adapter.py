@@ -111,7 +111,7 @@ class Adapter(object):
         """
         set_seed(self.args.seed)
         with torch.no_grad():
-            inPut = torch.randn(self.local_batch_size, 3, self.args.crop_size,
+            inPut = torch.randn(512, 3, self.args.crop_size,
                                 self.args.crop_size).to(self.devicename)
             outPut = self.model.forward_features(inPut)  # [512, emd_dim]
             outPut = outPut.std(0, unbiased=False)  # [emd_dim]
