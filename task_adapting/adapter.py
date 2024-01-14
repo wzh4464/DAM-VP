@@ -362,10 +362,10 @@ class Adapter(object):
         if self.args.wo_da:
             # prompter = deepcopy(prompter)
             optimizer = torch.optim.SGD([
-                {'params': prompter.parameters(), 'lr': self.lr, 'momemtum': 0.9,
+                {'params': prompter.parameters(), 'lr': self.lr, 'momentum': 0.9,
                  'weight_decay': self.weight_decay},
                 {'params': self.model.get_classifier().parameters(), 'lr': 0.1,
-                 'momemtum': 0.9, 'weight_decay': 0}
+                 'momentum': 0.9, 'weight_decay': 0}
             ])
         else:
             prompter_gather, prompter_params_gather = [], []
@@ -375,11 +375,11 @@ class Adapter(object):
                 )
                 prompter_params_gather.append(
                     {'params': prompter_gather[i].parameters(
-                    ), 'lr': self.lr, 'momemtum': 0.9, 'weight_decay': self.weight_decay}
+                    ), 'lr': self.lr, 'momentum': 0.9, 'weight_decay': self.weight_decay}
                 )
             prompter_params_gather.append(
                 {'params': self.model.get_classifier().parameters(), 'lr': 0.1,
-                 'momemtum': 0.9, 'weight_decay': 0}
+                 'momentum': 0.9, 'weight_decay': 0}
             )
             optimizer = torch.optim.SGD(prompter_params_gather)
         scheduler = cosine_lr(
@@ -489,10 +489,10 @@ class Adapter(object):
         if self.args.wo_da:
             # prompter = deepcopy(prompter)
             optimizer = torch.optim.SGD([
-                {'params': prompter.parameters(), 'lr': self.lr, 'momemtum': 0.9,
+                {'params': prompter.parameters(), 'lr': self.lr, 'momentum': 0.9,
                  'weight_decay': self.weight_decay},
                 {'params': self.model.get_classifier().parameters(), 'lr': 0.1,
-                 'momemtum': 0.9, 'weight_decay': 0}
+                 'momentum': 0.9, 'weight_decay': 0}
             ])
         else:
             # head_params = [
@@ -504,13 +504,13 @@ class Adapter(object):
                 prompter_params_gather.append({
                     'params': prompter_gather[i].parameters(),
                     'lr': self.lr,
-                    'momemtum': 0.9,
+                    'momentum': 0.9,
                     'weight_decay': self.weight_decay
                 })
                 prompter_params_gather.append({
                     'params': self.head_list[i].parameters(),
                     'lr': 0.1,
-                    'momemtum': 0.9,
+                    'momentum': 0.9,
                     'weight_decay': 0
                 })
 
@@ -518,7 +518,7 @@ class Adapter(object):
             # prompter_params_gather.append({
             #     'params': head_params,
             #     'lr': 0.1,
-            #     'momemtum': 0.9,
+            #     'momentum': 0.9,
             #     'weight_decay': 0
             # })
 
@@ -664,13 +664,13 @@ class Adapter(object):
             prompter_params_gather.append({
                 'params': prompter_gather[i].parameters(),
                 'lr': self.lr,
-                'momemtum': 0.9,
+                'momentum': 0.9,
                 'weight_decay': self.weight_decay
             })
             prompter_params_gather.append({
                 'params': self.head_list[i].parameters(),
                 'lr': 0.1,
-                'momemtum': 0.9,
+                'momentum': 0.9,
                 'weight_decay': 0
             })
 
