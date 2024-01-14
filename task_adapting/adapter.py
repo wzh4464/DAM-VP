@@ -413,8 +413,7 @@ class Adapter(object):
                 # logger.info(prompter.pad_up.grad)
                 optimizer.step()
                 if (i + 1) % 1 == 0:
-                    logger.info("[Prompt Finetuning] Epoch: [{}/{}], Step: [{}/{}], Training loss: {}".format(
-                        epoch, self.args.epochs, i, len(train_loader), loss.item()))
+                    logger.info(f"[Prompt Finetuning] Epoch: [{epoch}/{self.args.epochs}], Step: [{i}/{len(train_loader)}], Training loss: {loss.item()}, device: {self.devicename}")
             # validate
             with torch.no_grad():
                 num_total, correct = 0, 0
@@ -429,7 +428,7 @@ class Adapter(object):
                     num_total += image.size(0)
                 acc_val = float(correct / num_total)
                 logger.info(
-                    "[Prompt Validating] Epoch: {}, Val acc: {}".format(epoch, acc_val))
+                    f"[Prompt Validating] Epoch: {epoch}, Val acc: {acc_val}, device: {self.devicename}")
                 if acc_val > BEST_ACC_VAL:
                     BEST_ACC_VAL = acc_val
                     if self.args.wo_da:
@@ -446,7 +445,23 @@ class Adapter(object):
             # torch.save(self.model.get_classifier(),
             #            f"{self.args.output_dir}/head_{self.devicename}_epoch_{epoch}.pth")
             # logger.info(f"Saving model head to {self.args.output_dir}/head_{self.devicename}_epoch_{epoch}.pth")
-        return 0 
+            if epoch > 0 and (epoch + 1) % 5 == 0:
+                with torch.no_grad():
+                    num_total, correct = 0, 0
+                    for sample in test_loader:
+                        image = sample["image"].to(self.devicename)
+                        label = sample["label"].to(self.devicename)
+                        _, prompted_image = self.get_prompted_image(image, prompter=best_prompter) \
+                            if self.args.wo_da else self.get_prompted_image(image, self.prototype_gather, prompter_gather=best_prompter_gather)
+                        output = self.model.forward_features(prompted_image)
+                        logits = self.rep2logit(output, num_classes)
+                        pred = torch.argmax(logits, dim=-1)
+                        correct += (pred == label).sum().item()
+                        num_total += image.size(0)
+                    acc_test = float(correct / num_total)
+                    logger.info(
+                        f"[Prompt Testing] Epoch: {epoch}, Test acc: {acc_test}, device: {self.devicename}")
+        return acc_test
 
     def our_method_with_mul_head(self, test_data, prompter_path):
         """Multi-Head for unlearning.
