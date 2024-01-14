@@ -1,0 +1,39 @@
+{
+    // 使用 IntelliSense 了解相关属性。 
+    // 悬停以查看现有属性的描述。
+    // 欲了解更多信息，请访问: https://go.microsoft.com/fwlink/?linkid=830387
+    "version": "0.2.0",
+    //  export CUDA_VISIBLE_DEVICES=0,1,2 && python task_adapting/main.py --base_dir ~/dataset --pretrained_model vit-b-1k --adapt_method prompt_wo_head --test_dataset cifar100 --epochs 50 --lr 0.5 --weight_decay 1e-4 --checkpoint_dir checkpoints/vit-b-1k-wo-head.pth --batch_size 32 --distributed
+    "configurations": [
+        {
+            "name": "Python 调试程序: 包含参数的当前文件",
+            "type": "debugpy",
+            "request": "launch",
+            "program": "task_adapting/main.py",
+            "console": "integratedTerminal",
+            "args": [
+                "--base_dir",
+                "~/dataset",
+                "--pretrained_model",
+                "vit-b-1k",
+                "--adapt_method",
+                "prompt_wo_head",
+                "--test_dataset",
+                "cifar100",
+                "--epochs",
+                "50",
+                "--lr",
+                "0.5",
+                "--weight_decay",
+                "1e-4",
+                "--checkpoint_dir",
+                "checkpoints/vit-b-1k-wo-head.pth",
+                "--batch_size",
+                "32"
+            ],
+            "env": {
+                "CUDA_VISIBLE_DEVICES": "0"
+            }
+        }
+    ]
+}
