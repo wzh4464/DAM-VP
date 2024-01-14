@@ -453,14 +453,13 @@ class Adapter(object):
                         label = sample["label"].to(self.devicename)
                         _, prompted_image = self.get_prompted_image(image, prompter=best_prompter) \
                             if self.args.wo_da else self.get_prompted_image(image, self.prototype_gather, prompter_gather=best_prompter_gather)
-                        output = self.model.forward_features(prompted_image)
-                        logits = self.rep2logit(output, num_classes)
+                        logits = self.model(prompted_image)
                         pred = torch.argmax(logits, dim=-1)
                         correct += (pred == label).sum().item()
                         num_total += image.size(0)
                     acc_test = float(correct / num_total)
-                    logger.info(
-                        f"[Prompt Testing] Epoch: {epoch}, Test acc: {acc_test}, device: {self.devicename}")
+                    # logger.info("[Prompt Testing] Epoch: {}, Test acc: {}".format(epoch, acc_test))
+                    logger.info(f"[Prompt Testing] Epoch: {epoch}, Test acc: {acc_test}, device: {self.devicename}")
         return acc_test
 
     def our_method_with_mul_head(self, test_data, prompter_path):
