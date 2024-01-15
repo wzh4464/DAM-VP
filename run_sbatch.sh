@@ -37,5 +37,6 @@ export NCCL_TIMEOUT=200
     --test_dataset svhn \
     --num_gpus 8 \
     --num_workers 1 \
+    --distance_threshold 20 \
     --distributed
     
