@@ -176,6 +176,8 @@ class Arguments:
         self._parser.add_argument('--local-rank', type=int, default=-1)
         self._parser.add_argument('--world_size', type=int, default=1)
 
+        self._parser.add_argument('--distance_threshold', type=float, default=10, help='Threshold for distance.')
+
     def add_common_args(self):
         ### log related
         self._parser.add_argument('--output_dir', type=str, default='')

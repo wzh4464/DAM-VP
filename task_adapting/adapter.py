@@ -187,7 +187,7 @@ class Adapter(object):
         threshold_dict = {
             "resnet50-1k": 21,
             "vit-b-1k": 31,
-            "vit-b-22k": 10,
+            "vit-b-22k": self.args.distance_threshold,
             "swin-b-22k": 20,
             "moco-v3-b-1k": 18
         }
