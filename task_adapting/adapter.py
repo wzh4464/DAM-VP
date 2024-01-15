@@ -142,6 +142,7 @@ class Adapter(object):
         if self.args.wo_da:
             assert prompter is not None
             prompted_image = prompter(image)
+            indices = None
         else:
             assert prototype_gather is not None
             assert prompter_gather is not None
@@ -160,7 +161,10 @@ class Adapter(object):
                 prompter_gather[indices[idx]](image[idx].unsqueeze(0))
                 for idx in range(rep_batch.size(0))
             ]
-            return indices, torch.cat(prompted_image, dim=0)
+
+            prompted_image = torch.cat(prompted_image, dim=0)
+
+        return indices, prompted_image
 
     def coarse_clustering(self, data_loader):
         """Diversity-Aware Adaption on downstream data.
