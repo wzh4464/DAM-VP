@@ -63,6 +63,7 @@ class CIFAR10(VisionDataset):
         args,
         split: str = "train",
         percentage: float = 0.8,
+        sub_percentage: float = 1.0,  # use part of the training set
         # transform: Optional[Callable] = None,
         target_transform: Optional[Callable] = None,
         download: bool = True,
@@ -105,8 +106,10 @@ class CIFAR10(VisionDataset):
         self.data = self.data.transpose((0, 2, 3, 1))  # convert to HWC
 
         if self.split == "train":
-            self.data = self.data[:int(percentage*len(self.data))]
-            self.targets = self.targets[:int(percentage*len(self.targets))]
+            training_percentage = percentage * sub_percentage
+            logger.info(f"Using {training_percentage * 100}% of training data")
+            self.data = self.data[:int(training_percentage*len(self.data))]
+            self.targets = self.targets[:int(training_percentage*len(self.targets))]
         if self.split == "val":
             self.data = self.data[int(percentage*len(self.data)):]
             self.targets = self.targets[int(percentage*len(self.targets)):]
