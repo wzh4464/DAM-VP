@@ -566,31 +566,6 @@ class Adapter(object):
                         f"[Prompt Finetuning] Epoch: [{epoch}/{self.args.epochs}], Step: [{i}/{len(train_loader)}], Training loss: {loss.item()}, Training acc: {acc_train}, device: {self.devicename}"
                     )
 
-            with torch.no_grad():
-                num_total, correct = 0, 0
-                for sample in train_loader:
-                    image = sample["image"].to(self.devicename)
-                    label = sample["label"].to(self.devicename)
-                    # prompted_image = self.get_prompted_image(image, prompter=prompter) \
-                    #     if self.args.wo_da else self.get_prompted_image(image, self.prototype_gather, prompter_gather=prompter_gather)
-                    # logits = self.model(prompted_image)
-
-                    logits, loss = self.infer(
-                        prompter, prompter_gather, image, label)
-
-                    pred = torch.argmax(logits, dim=-1)
-                    correct += (pred == label).sum().item()
-                    num_total += image.size(0)
-                acc_val = float(correct / num_total)
-                logger.info(
-                    f"[Prompt Training] Epoch: {epoch}, Train acc: {acc_val}, device: {self.devicename}")
-                if acc_val > BEST_ACC_VAL:
-                    BEST_ACC_VAL = acc_val
-                    if self.args.wo_da:
-                        best_prompter = deepcopy(prompter)
-                    else:
-                        best_prompter_gather = deepcopy(prompter_gather)
-
             # validate
             with torch.no_grad():
                 num_total, correct, loss_total = 0, 0, 0
@@ -634,7 +609,7 @@ class Adapter(object):
                         image = sample["image"].to(self.devicename)
                         label = sample["label"].to(self.devicename)
                         logits, loss = self.infer(
-                            prompter, prompter_gather, image, label)
+                            prompter, best_prompter_gather, image, label)
                         loss_total += loss.item()
 
                         pred = torch.argmax(logits, dim=-1)
@@ -694,16 +669,6 @@ class Adapter(object):
             for i, sample in enumerate(train_loader):
                 # adjust learning rate
                 self.train_rand(train_loader, prompter, prompter_gather, i, optimizer, scheduler, epoch, sample)
-            with torch.no_grad():
-                acc_train, loss_train = self.evaluation_rand(train_loader, prompter, prompter_gather)
-                logger.info(
-                    f"[Prompt Training] Epoch: {epoch}, Train acc: {acc_train}, Train loss: {loss_train}, device: {self.devicename}")
-                if acc_train > BEST_ACC_VAL:
-                    BEST_ACC_VAL = acc_train
-                    if self.args.wo_da:
-                        best_prompter = deepcopy(prompter)
-                    else:
-                        best_prompter_gather = deepcopy(prompter_gather)
 
             # validate
             with torch.no_grad():
@@ -731,7 +696,7 @@ class Adapter(object):
 
             if epoch > 0 and (epoch + 1) % 5 == 0:
                 with torch.no_grad():
-                    acc_test, loss_test = self.evaluation_rand(test_loader, prompter, prompter_gather)
+                    acc_test, loss_test = self.evaluation_rand(test_loader, prompter, best_prompter_gather)
                     logger.info(
                         f"[Prompt Testing] Epoch: {epoch}, Test acc: {acc_test}, Test loss: {loss_test}, device: {self.devicename}")
         return 0
