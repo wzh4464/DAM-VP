@@ -107,6 +107,7 @@ class CIFAR10(VisionDataset):
 
         if self.split == "train":
             training_percentage = percentage * sub_percentage
+            logger.info(f"Using {training_percentage * 100}% of training data")
             self.data = self.data[:int(training_percentage*len(self.data))]
             self.targets = self.targets[:int(training_percentage*len(self.targets))]
         if self.split == "val":
