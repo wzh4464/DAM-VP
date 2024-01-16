@@ -73,6 +73,7 @@ class SVHN(VisionDataset):
         percentage: float = 0.8,
         # transform: Optional[Callable] = None,
         target_transform: Optional[Callable] = None,
+        sub_percentage: float = 1.0,
         download: bool = False,
     ) -> None:
         super().__init__(
@@ -112,8 +113,8 @@ class SVHN(VisionDataset):
         self.data = np.transpose(self.data, (3, 2, 0, 1))
 
         if split == "train":
-            self.labels = self.labels[:int(percentage*len(self.labels))]
-            self.data = self.data[:int(percentage*len(self.data))]
+            self.labels = self.labels[:int(percentage*sub_percentage*len(self.labels))]
+            self.data = self.data[:int(percentage*sub_percentage*len(self.data))]
         if split == "val":
             self.labels = self.labels[int(percentage*len(self.labels)):]
             self.data = self.data[int(percentage*len(self.data)):]

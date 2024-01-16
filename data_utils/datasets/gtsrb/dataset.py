@@ -89,6 +89,7 @@ class GTSRB(VisionDataset):
         percentage: float = 0.8,
         # transform: Optional[Callable] = None,
         target_transform: Optional[Callable] = None,
+        sub_percentage: float = 1.0,
         download: bool = True,
     ) -> None:
 
@@ -132,7 +133,7 @@ class GTSRB(VisionDataset):
             self._samples = samples
 
         if split == "train":
-            self._samples = samples[:int(percentage*len(samples))]
+            self._samples = samples[:int(percentage*sub_percentage*len(samples))]
         if split == "val":
             self._samples = samples[int(percentage*len(samples)):]
 
