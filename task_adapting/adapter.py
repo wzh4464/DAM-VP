@@ -24,6 +24,7 @@ import sklearn.cluster as cluster
 
 from utils.distributed import get_rank
 from PIL import Image
+import torchvision.transforms as tv
 
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 ROOT_DIR = BASE_DIR
@@ -141,6 +142,16 @@ class Adapter(object):
     def get_prompted_image(self, image, prototype_gather=None, prompter=None, prompter_gather=None):
         """Obtain the prompted batch images.
         """
+
+        mean = np.array([0.5, 0.5, 0.5])
+        std = np.array([0.5, 0.5, 0.5])
+        inv_normalize = tv.transforms.Normalize(
+            mean=-mean/std,
+            std=1/std
+        )
+
+        assert self.num_coarse_classes == len(prompter_gather)
+
         if self.args.wo_da:
             assert prompter is not None
             prompted_image = prompter(image)
@@ -158,6 +169,27 @@ class Adapter(object):
                 distance_matrix = torch.sqrt(
                     rep_batch_sum + prototype_gather_sum - 2 * torch.mm(rep_batch, prototype_gather.T))  # [N, M]
                 indices = torch.argmin(distance_matrix, dim=-1)  # [B]
+            
+            # 对 DataLoader 中的每个图像进行处理
+            for idx in range(len(indices)):
+                if len(self.image_list[indices[idx]]) < 10:
+                    # 应用反标准化
+                    image_normalized = inv_normalize(image[idx]) * 255
+
+                    # 转换为 PIL 图像
+                    image_pil = Image.fromarray(
+                        image_normalized.permute(1, 2, 0).cpu().numpy().astype(np.uint8))
+
+                    # 保存图像
+                    image_pil.save(
+                        f"{self.args.output_dir}/image_list_{indices[idx]}_{len(self.image_list[indices[idx]])}_{self.devicename}.png")
+                    # also save a 32 x 32 version
+                    image_pil.resize((32, 32)).save(
+                        f"{self.args.output_dir}/image_list_{indices[idx]}_{len(self.image_list[indices[idx]])}_{self.devicename}_32x32.png")
+
+                    # 添加到图像列表并记录
+                    self.image_list[indices[idx]].append(image_pil)
+                    logger.info(f"Add image {idx} to the image list {indices[idx]}")
 
             prompted_image = [
                 prompter_gather[indices[idx]](image[idx].unsqueeze(0))
@@ -773,6 +805,13 @@ class Adapter(object):
         """Obtain the prompted batch images.
         """
 
+        mean = np.array([0.5, 0.5, 0.5])
+        std = np.array([0.5, 0.5, 0.5])
+        inv_normalize = tv.transforms.Normalize(
+            mean=-mean/std,
+            std=1/std
+        )
+
         assert self.num_coarse_classes == len(prompter_gather)
 
         hash_list = [
@@ -780,15 +819,26 @@ class Adapter(object):
             for idx in range(image.size(0))
         ]
 
-        # add images to image list if one list is shorter than 10
+        # 对 DataLoader 中的每个图像进行处理
         for idx in range(len(hash_list)):
             if len(self.image_list[hash_list[idx]]) < 10:
-                self.image_list[hash_list[idx]].append(image[idx])
-                logger.info(f"Add image {idx} to the image list {hash_list[idx]}")
-                image = Image.fromarray(
-                    image[idx].permute(1, 2, 0).cpu().numpy())
-                image.save(
+                # 应用反标准化
+                image_normalized = inv_normalize(image[idx]) * 255
+
+                # 转换为 PIL 图像
+                image_pil = Image.fromarray(
+                    image_normalized.permute(1, 2, 0).cpu().numpy().astype(np.uint8))
+
+                # 保存图像
+                image_pil.save(
                     f"{self.args.output_dir}/image_list_{hash_list[idx]}_{len(self.image_list[hash_list[idx]])}_{self.devicename}.png")
+                # also save a 32 x 32 version
+                image_pil.resize((32, 32)).save(
+                    f"{self.args.output_dir}/image_list_{hash_list[idx]}_{len(self.image_list[hash_list[idx]])}_{self.devicename}_32x32.png")
+
+                # 添加到图像列表并记录
+                self.image_list[hash_list[idx]].append(image_pil)
+                logger.info(f"Add image {idx} to the image list {hash_list[idx]}")
 
         # if all lists are longer than 10, then save all images in the list to the disk
         if all(

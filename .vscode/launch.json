@@ -43,8 +43,8 @@
             }
         },
         {
-            "name": "Python: cifar100 vit-b-22k prompt_w_mul_head",
-            "type": "python",
+            "name": "Python: image_list",
+            "type": "debugpy",
             "request": "launch",
             "console": "integratedTerminal",
             "module": "torch.distributed.launch",
@@ -57,7 +57,7 @@
                 "--master_port=1234",
                 "task_adapting/main.py",
                 "--output_dir",
-                "../result/cifar100-vit-22k-mul-head-with-meta-3gpu-bs24_debug",
+                "result/image_list",
                 "--batch_size",
                 "24",
                 "--base_dir",
@@ -65,7 +65,7 @@
                 "--pretrained_model",
                 "vit-b-22k",
                 "--adapt_method",
-                "prompt_w_mul_head",
+                "prompt_w_head",
                 "--epochs",
                 "50",
                 "--lr",
