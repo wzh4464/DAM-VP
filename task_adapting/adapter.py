@@ -1,3 +1,4 @@
+from tkinter import Image
 from arguments import Arguments
 import utils.logging as logging
 from utils.train_utils import cosine_lr
@@ -22,6 +23,7 @@ import torch.nn.functional as F
 import sklearn.cluster as cluster
 
 from utils.distributed import get_rank
+from PIL import Image
 
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 ROOT_DIR = BASE_DIR
@@ -228,6 +230,10 @@ class Adapter(object):
             "prototype_gather": self.prototype_gather,
             "num_coarse_classes": self.num_coarse_classes
         }
+
+        # init a image list for each cluster
+        self.image_list = [[] for _ in range(self.num_coarse_classes)]
+
         # torch.save(save_dict, f"{self.args.output_dir}/prototype_gather_{self.devicename}.pth")
 
 
@@ -773,6 +779,23 @@ class Adapter(object):
             hash_tensor(image[idx], len(prompter_gather), seed=seed)
             for idx in range(image.size(0))
         ]
+
+        # add images to image list if one list is shorter than 10
+        for idx in range(len(hash_list)):
+            if len(self.image_list[hash_list[idx]]) < 10:
+                self.image_list[hash_list[idx]].append(image[idx])
+                logger.info(f"Add image {idx} to the image list {hash_list[idx]}")
+                image = Image.fromarray(
+                    image[idx].permute(1, 2, 0).cpu().numpy())
+                image.save(
+                    f"{self.args.output_dir}/image_list_{hash_list[idx]}_{len(self.image_list[hash_list[idx]])}_{self.devicename}.png")
+
+        # if all lists are longer than 10, then save all images in the list to the disk
+        if all(
+            len(self.image_list[idx]) >= 2 for idx in range(len(self.image_list))
+        ):
+            logger.info("All images in the image list have been saved to the disk.")
+            sys.exit()
 
         indices = torch.tensor(hash_list).to(self.devicename)
 
