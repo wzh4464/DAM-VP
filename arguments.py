@@ -177,6 +177,7 @@ class Arguments:
         self._parser.add_argument('--world_size', type=int, default=1)
 
         self._parser.add_argument('--distance_threshold', type=float, default=10, help='Threshold for distance.')
+        self._parser.add_argument('--training_usage_percentage', type=float, default=1.0, help='Percentage of training data for usage.')
 
     def add_common_args(self):
         ### log related
