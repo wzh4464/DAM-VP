@@ -29,7 +29,7 @@ conda activate lmeraser
 # conda install from environment.yaml
 conda env update --file environment.yaml
 
-apt update && apt install tmux rsync -y
+apt update && apt install tmux rsync cadaver -y
 
 curl -sL https://aka.ms/InstallAzureCLIDeb | bash
 
