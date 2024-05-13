@@ -14,22 +14,24 @@
 git clone https://github.com/wzh4464/DAM-VP.git
 
 wget https://repo.anaconda.com/miniconda/Miniconda3-latest-Linux-x86_64.sh && \
-bash Miniconda3-latest-Linux-x86_64.sh -b && \
+bash Miniconda3-latest-Linux-x86_64.sh -b -p /workspace/miniconda3 && \
 rm Miniconda3-latest-Linux-x86_64.sh
 
 cd DAM-VP
 git checkout runpod
 # bash conda setting
-sh -c '. /root/miniconda3/etc/profile.d/conda.sh ; conda activate base ; conda init bash'
+sh -c '. /workspace/miniconda3/etc/profile.d/conda.sh'
+source ~/.bashrc
+conda init bash
 source ~/.bashrc
 
-conda create -n lmeraser
+conda create -n lmeraser -y
 conda activate lmeraser
 
 # conda install from environment.yaml
-conda env update --file environment.yaml
+CONDA_ALWAYS_YES="true" conda env update --file environment.yaml
 
-apt update && apt install tmux rsync cadaver -y
+apt update && apt install tmux rsync cadaver unzip -y
 
 curl -sL https://aka.ms/InstallAzureCLIDeb | bash
 
