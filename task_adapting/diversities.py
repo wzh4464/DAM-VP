@@ -1,3 +1,16 @@
+###
+ # File: /diversities.py
+ # Created Date: Thursday, May 16th 2024
+ # Author: Zihan
+ # -----
+ # Last Modified: Thursday, 16th May 2024 11:16:09 am
+ # Modified By: the developer formerly known as Zihan at <wzh4464@gmail.com>
+ # -----
+ # HISTORY:
+ # Date      		By   	Comments
+ # ----------		------	---------------------------------------------------------
+###
+
 #!/usr/bin/env python3
 from __future__ import print_function
 from dis import dis
